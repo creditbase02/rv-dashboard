@@ -1,0 +1,377 @@
+const assert = require('node:assert/strict');
+const {execFileSync} = require('node:child_process');
+const {mkdtempSync,readFileSync,rmSync,writeFileSync} = require('node:fs');
+const {tmpdir} = require('node:os');
+const {join} = require('node:path');
+
+async function run(browser, base, width = 1440) {
+  const context = await browser.newContext({viewport:{width,height:1000},hasTouch:width<650});
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror',e=>errors.push(e.message));
+  page.on('console',m=>{if(m.type()==='error') errors.push(m.text());});
+  page.on('response',r=>{if(r.status()>=400) errors.push(`${r.status()} ${r.url()}`);});
+  await page.goto(base);
+  await page.waitForSelector('.rv-point');
+  assert.equal(await page.locator('[name=section]:checked').inputValue(),'Overview');
+  assert.deepEqual(await page.locator('[name=metric]:checked').evaluateAll(es=>es.map(e=>e.value)),['Spread']);
+  const metrics = ['Spread','10Y','30Y','10s30s'];
+  const data = await (await page.request.get(base+'assets/rv-data.json')).json();
+  let combinations = 0;
+  for(const section of ['Overview','Cyclical','Non-Cyclical']) {
+    await page.locator(`[name=section][value="${section}"]`).check();
+    for(let mask=0;mask<16;mask++) {
+      for(const metric of metrics) await page.locator(`[name=metric][value="${metric}"]`).setChecked(false);
+      for(let index=0;index<4;index++) await page.locator(`[name=metric][value="${metrics[index]}"]`).setChecked(Boolean(mask&(1<<index)));
+      const expected = mask&8 ? ['10s30s'] : metrics.filter((_,index)=>mask&(1<<index));
+      assert.deepEqual(await page.locator('[name=metric]:checked').evaluateAll(es=>es.map(e=>e.value)),expected);
+      assert.equal(await page.locator('.rv-chart').count(),mask ? 1 : 0);
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/${section}/${mask} overflow`);
+      combinations++;
+    }
+    for(const metric of metrics) {
+      for(const option of metrics) await page.locator(`[name=metric][value="${option}"]`).setChecked(false);
+      await page.locator(`[name=metric][value="${metric}"]`).check();
+      const points = page.locator(`.rv-point[data-metric="${metric}"]`);
+      assert.equal(await points.count(),data.sections[section][metric].length*5);
+      assert.equal(await page.locator(`polygon.rv-range-arrow[data-metric="${metric}"][data-field="min"]`).count(),data.sections[section][metric].length);
+      assert.equal(await page.locator(`polygon.rv-range-arrow[data-metric="${metric}"][data-field="max"]`).count(),data.sections[section][metric].length);
+      assert.equal(await page.locator(`line.rv-range-line`).count(),data.sections[section][metric].length);
+      assert.equal(await page.locator(`rect.rv-median-marker[data-metric="${metric}"]`).count(),data.sections[section][metric].length);
+      assert.equal(await page.locator(`polygon.rv-current-marker[data-metric="${metric}"]`).count(),data.sections[section][metric].length);
+      assert.equal(await page.locator('.range-value-label,.current-value-label').count(),0);
+      assert.equal(await page.locator('.percentile-value-label').count(),data.sections[section][metric].length);
+      const currentPoints=(await page.locator(`polygon.rv-current-marker[data-metric="${metric}"]`).first().getAttribute('points')).trim().split(/\s+/).map(pair=>Number(pair.split(',')[0]));
+      assert.equal(currentPoints[0]+currentPoints[1],currentPoints[2]*2,'current marker is horizontally centered');
+      for(const field of ['min','max']) {
+        await page.locator(`.rv-point[data-metric="${metric}"][data-field="${field}"]`).first().focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await page.locator('#rv-tooltip').isVisible(),true);
+        const row=data.sections[section][metric][0],tooltip=await page.locator('#rv-tooltip').innerText();
+        assert.match(tooltip,/2Y Min–Max/);
+        assert.ok(tooltip.includes(new Intl.NumberFormat('en-US',{maximumFractionDigits:6}).format(row.min)));
+        assert.ok(tooltip.includes(new Intl.NumberFormat('en-US',{maximumFractionDigits:6}).format(row.max)));
+        await page.keyboard.press('Escape');
+      }
+    }
+    for(const option of metrics) await page.locator(`[name=metric][value="${option}"]`).setChecked(false);
+    await page.locator('[name=metric][value="Spread"]').check();
+    await page.locator('[name=metric][value="10Y"]').check();
+    assert.equal(await page.locator('.percentile-value-label').count(),data.sections[section].Spread.length*2);
+    assert.equal(await page.locator('.percentile-value-label.compact').count(),data.sections[section].Spread.length*2);
+    assert.equal(await page.locator('.range-value-label,.current-value-label').count(),0);
+  }
+  const peerHref = await page.getByRole('link',{name:'返回券商報告知識庫'}).getAttribute('href');
+  assert.equal(peerHref,'https://creditbase02.github.io/ib-knowledge-base/');
+  assert.deepEqual(errors,[]);
+  await context.close();
+  return {width,combinations};
+}
+
+async function runBonds(browser,base,width=1440){
+  const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width<650});
+  const page=await context.newPage(),errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  page.on('response',response=>{if(response.status()>=400)errors.push(`${response.status()} ${response.url()}`);});
+  await page.goto(base+'bonds.html');
+  await page.waitForSelector('#bond-rows tr');
+  const data=await (await page.request.get(base+'assets/luac-bonds.json')).json();
+  const model=require('../assets/luac-model.js');
+  assert.equal(await page.locator('[name=bond-metric]:checked').inputValue(),'yield_pct');
+  assert.equal(await page.locator('#chart-title').innerText(),'Maturity × Yield');
+  assert.equal(await page.locator('#bond-rows tr').count(),50);
+  const uncheckedRatings=await page.locator('#rating-filter input:not(:checked)').evaluateAll(inputs=>inputs.map(input=>input.value));
+  const checkedRatings=await page.locator('#rating-filter input:checked').evaluateAll(inputs=>inputs.map(input=>input.value));
+  assert.ok(uncheckedRatings.length>0);
+  assert.ok(uncheckedRatings.every(rating=>['BB','NR'].includes(model.ratingBand(rating))));
+  assert.ok(checkedRatings.every(rating=>['AAA','AA','A','BBB'].includes(model.ratingBand(rating))));
+  assert.deepEqual(await page.locator('#bond-canvas').evaluate(canvas=>[Number(canvas.dataset.xMin),Number(canvas.dataset.xMax)]),[0,50]);
+  assert.equal(await page.locator('#issuer-filter').count(),0);
+  assert.equal(await page.locator('#curve-group option[value=ticker]').count(),0);
+  assert.deepEqual(await page.locator('.filter-card').evaluateAll(cards=>cards.map(card=>card.dataset.filter)),['rating','industry','ticker']);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/bonds overflow`);
+
+  if(width===1440){
+    const industryHandle=page.locator('.filter-card[data-filter=industry] .drag-handle'),ratingCard=page.locator('.filter-card[data-filter=rating]');
+    const handleBox=await industryHandle.boundingBox(),ratingBox=await ratingCard.boundingBox();
+    await page.mouse.move(handleBox.x+handleBox.width/2,handleBox.y+handleBox.height/2);await page.mouse.down();
+    await page.mouse.move(ratingBox.x+ratingBox.width/2,ratingBox.y+2,{steps:6});await page.mouse.up();
+    assert.deepEqual(await page.locator('.filter-card').evaluateAll(cards=>cards.map(card=>card.dataset.filter)),['industry','rating','ticker']);
+    await page.locator('#reset-filters').click();
+    await page.locator('.filter-card[data-filter=ticker] [data-filter-move=up]').click();
+    assert.deepEqual(await page.locator('.filter-card').evaluateAll(cards=>cards.map(card=>card.dataset.filter)),['rating','ticker','industry']);
+    await page.locator('#reset-filters').click();
+
+    const exactRating=data.records.map(record=>record[5]).find(rating=>model.ratingBand(rating)==='A');
+    assert.ok(exactRating);
+    await page.locator('[data-filter-action=none][data-filter=rating]').click();
+    await page.locator('#rating-filter input').evaluateAll((inputs,value)=>inputs.find(input=>input.value===value).click(),exactRating);
+    const matching=data.records.filter(record=>record[5]===exactRating),industries=[...new Set(matching.map(record=>record[9]))].sort(),tickers=[...new Set(matching.map(record=>record[3]))].sort();
+    assert.deepEqual((await page.locator('#industry-filter input').evaluateAll(inputs=>inputs.map(input=>input.value))).sort(),industries);
+    assert.deepEqual((await page.locator('#ticker-filter input').evaluateAll(inputs=>inputs.map(input=>input.value))).sort(),tickers);
+    assert.ok((await page.locator('#bond-rows tr td:nth-child(5)').allInnerTexts()).every(rating=>rating===exactRating));
+
+    await page.locator('#point-group').selectOption('industry');
+    assert.equal(await page.locator('#point-group').inputValue(),'band');
+    assert.match(await page.locator('#grouping-notice').innerText(),/1–10/);
+    await page.locator('#industry-filter input').first().check();
+    await page.locator('#point-group').selectOption('industry');await page.locator('#curve-group').selectOption('industry');
+    assert.equal(await page.locator('#point-group').inputValue(),'industry');assert.equal(await page.locator('#curve-group').inputValue(),'industry');
+    assert.match(await page.locator('#curve-legend').innerText(),/點位顏色與回歸曲線｜產業/);
+    await page.locator('#ticker-filter input').first().check();await page.locator('#point-group').selectOption('ticker');
+    assert.equal(await page.locator('#point-group').inputValue(),'ticker');
+    const curveLegend=await page.locator('.legend-group').nth(1).innerText();
+    assert.match(await page.locator('#curve-legend').innerText(),/點位顏色｜Ticker/);assert.match(curveLegend,/回歸曲線｜產業/);
+    const selectedId=await page.locator('#bond-rows tr').first().getAttribute('data-id');await page.locator('#bond-search').fill(selectedId);
+    await page.waitForFunction(id=>document.querySelectorAll('#bond-rows tr').length===1&&document.querySelector('#bond-rows tr')?.dataset.id===id,selectedId);
+    assert.equal(await page.locator('.legend-group').nth(1).innerText(),curveLegend,'bond search must not change curve population');
+    await page.locator('#bond-search').fill('');await page.locator('#ticker-filter input:checked').first().evaluate(input=>input.click());
+    assert.equal(await page.locator('#point-group').inputValue(),'band');assert.match(await page.locator('#grouping-notice').innerText(),/已改回信評大類/);
+    await page.locator('#reset-filters').click();
+
+    const scrollResult=await page.locator('#ticker-filter').evaluate(container=>{container.scrollTop=120;const input=container.querySelectorAll('input')[15];input.focus({preventScroll:true});const before=container.scrollTop,value=input.value;input.click();return new Promise(resolve=>requestAnimationFrame(()=>resolve({before,after:container.scrollTop,active:document.activeElement?.value,value})));});
+    assert.ok(Math.abs(scrollResult.after-scrollResult.before)<=1,'checking a filter must preserve list scroll');
+    assert.equal(scrollResult.active,scrollResult.value,'checking a filter must preserve focus');
+    await page.locator('#curve-group').selectOption('industry');
+    assert.equal(await page.locator('#curve-group').inputValue(),'industry','effective ticker-filtered industries should enable industry curves');
+    await page.locator('#curve-source').selectOption('all');
+    assert.match(await page.locator('#curve-legend').innerText(),/全樣本/);
+    await page.locator('#reset-filters').click();
+
+    const yieldHeader=page.locator('th[data-sort=yield]');
+    await yieldHeader.locator('button').click();assert.equal(await yieldHeader.getAttribute('aria-sort'),'descending');
+    await yieldHeader.locator('button').click();assert.equal(await yieldHeader.getAttribute('aria-sort'),'ascending');
+    const yields=(await page.locator('#bond-rows tr td:nth-child(6)').allInnerTexts()).map(value=>Number(value.replace(/[% ,]/g,'')));
+    assert.deepEqual(yields,[...yields].sort((a,b)=>a-b));
+    await page.locator('#reset-filters').click();
+  }
+
+  let row=page.locator('#bond-rows tr').first();
+  await row.focus();
+  let tooltip=await page.locator('#bond-tooltip').innerText();
+  assert.match(tooltip,/Yield/);
+  assert.match(tooltip,/OAS Spread/);
+  assert.match(tooltip,/Yield − curve/);
+  const residual=(await row.locator('td').nth(7).innerText()).trim();
+  if(residual!=='n.a.')assert.ok(tooltip.includes(residual));
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#bond-tooltip').isVisible(),true);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#bond-tooltip').isHidden(),true);
+
+  const hoverRecord=data.records.find(record=>record[6]>2&&record[6]<50&&!record[10].length&&['AAA','AA','A','BBB'].includes(model.ratingBand(record[5]))),hoverId=hoverRecord[0];
+  await page.locator('#bond-search').fill(hoverId);
+  await page.waitForFunction(id=>document.querySelectorAll('#bond-rows tr').length===1&&document.querySelector('#bond-rows tr')?.dataset.id===id,hoverId);
+  await page.locator('#bond-canvas').scrollIntoViewIfNeeded();
+  const box=await page.locator('#bond-canvas').boundingBox(),point={x:box.x+66+hoverRecord[6]/50*(box.width-88),y:box.y+24+(box.height-72)/2};
+  await page.mouse.move(point.x,point.y);
+  await page.locator('#bond-tooltip').waitFor({state:'visible'});
+  tooltip=await page.locator('#bond-tooltip').innerText();
+  assert.match(tooltip,/Yield/);assert.match(tooltip,/OAS Spread/);
+  if(width<650)await page.touchscreen.tap(point.x,point.y);else await page.mouse.click(point.x,point.y);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#bond-tooltip').isHidden(),true);
+  await page.locator('#bond-search').fill('');
+
+  await page.locator('[name=bond-metric][value=oas_bp]').check();
+  await page.waitForFunction(()=>document.querySelector('#chart-title')?.textContent==='Maturity × OAS Spread');
+  row=page.locator('#bond-rows tr').first();await row.focus();tooltip=await page.locator('#bond-tooltip').innerText();
+  assert.match(tooltip,/Yield/);assert.match(tooltip,/OAS Spread/);assert.match(tooltip,/OAS Spread − curve/);
+  await page.keyboard.press('Escape');
+
+  const anomaly=data.records.find(record=>record[10].length);
+  if(anomaly){
+    await page.locator('[data-filter-action=all][data-filter=rating]').click();
+    await page.locator('#show-outliers').check();
+    await page.locator('#bond-search').fill(anomaly[0]);
+    await page.waitForFunction(id=>document.querySelectorAll('#bond-rows tr').length===1&&document.querySelector('#bond-rows tr')?.dataset.id===id,anomaly[0]);
+    await page.locator('#bond-rows tr').first().focus();tooltip=await page.locator('#bond-tooltip').innerText();
+    assert.ok(tooltip.includes(new Intl.NumberFormat('en-US',{minimumFractionDigits:3,maximumFractionDigits:3}).format(anomaly[8])));
+    assert.ok(tooltip.includes(new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(anomaly[7])));
+    assert.match(tooltip,/資料異常/);
+    await page.keyboard.press('Escape');
+  }
+
+  await page.locator('#reset-filters').click();
+  await page.waitForFunction(()=>document.querySelector('#bond-rows tr'));
+  await page.locator('#bond-canvas').hover({position:{x:200,y:200}});
+  await page.mouse.wheel(0,-120);
+  const zoomedDomain=await page.locator('#bond-canvas').evaluate(canvas=>[Number(canvas.dataset.xMin),Number(canvas.dataset.xMax)]);
+  assert.ok(zoomedDomain[0]>=0&&zoomedDomain[1]<=50&&zoomedDomain[1]-zoomedDomain[0]<50);
+  await page.locator('#zoom-reset').click();
+  assert.deepEqual(await page.locator('#bond-canvas').evaluate(canvas=>[Number(canvas.dataset.xMin),Number(canvas.dataset.xMax)]),[0,50]);
+  assert.deepEqual(errors,[]);
+  await context.close();
+  return {width,bonds:data.records.length};
+}
+
+module.exports={run,runBonds};
+
+const FILES = {
+  Spread:'2Y Percentile RV.xlsx',
+  '10Y':'10Y RV.xlsx',
+  '30Y':'30Y RV.xlsx',
+  '10s30s':'10s30s RV.xlsx',
+};
+
+function fixtures(root,variant,date) {
+  const output=join(root,variant);
+  execFileSync('python3',['tests/make_xlsx_fixtures.py','--out',output,'--variant',variant,'--date',date],{stdio:'pipe'});
+  return Object.fromEntries(Object.entries(FILES).map(([metric,name])=>[metric,join(output,name)]));
+}
+
+async function openUploader(browser,base,expectedDate,width=1440,currentLuacDate='2026-09-15',currentLuacCount=40,bridge=false) {
+  const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width<650});
+  const page=await context.newPage();
+  const requests=[],bridgeRequests=[];
+  await page.route('**/assets/upload-config.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({enabled:true,luac_enabled:true,api_url:'https://rv-upload-service.example.workers.dev'})}));
+  await page.route('**/assets/luac-bonds.json*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({date:currentLuacDate,records:Array.from({length:currentLuacCount},()=>[])})}));
+  await page.route('https://rv-upload-service.example.workers.dev/**',async route=>{
+    const request=route.request();
+    requests.push({url:request.url(),method:request.method(),body:request.postData()});
+    if(request.url().endsWith('/session')) return route.fulfill({contentType:'application/json',body:JSON.stringify({token:'test-session',expires_in:900})});
+    if(request.url().endsWith('/publish/luac')) return route.fulfill({status:202,contentType:'application/json',body:JSON.stringify({id:'43',state:'pending'})});
+    if(request.url().endsWith('/publish')) return route.fulfill({status:202,contentType:'application/json',body:JSON.stringify({id:'42',state:'pending'})});
+    if(request.url().endsWith('/status/luac/43')) return route.fulfill({contentType:'application/json',body:JSON.stringify({state:'deployed',message:`發布完成：${expectedDate}，正式站驗證 PASS。`})});
+    if(request.url().endsWith('/status/42')) return route.fulfill({contentType:'application/json',body:JSON.stringify({state:'deployed',message:`發布完成：${expectedDate}，正式站驗證 PASS。`})});
+    if(request.url().endsWith('/health')) return route.fulfill({contentType:'text/plain',body:'RV Upload Service OK'});
+    return route.fulfill({status:404,body:'not found'});
+  });
+  if(bridge)await page.route('http://127.0.0.1:8768/**',route=>{const request=route.request();bridgeRequests.push({url:request.url(),body:request.postData()});if(request.url().endsWith('/health'))return route.fulfill({contentType:'application/json',body:JSON.stringify({ready:true})});return route.fulfill({contentType:'application/json',body:JSON.stringify({connected:true,reference_ok:true,universe_ok:true,count:40,required_field_coverage_pct:100,ids_match:true,industry_match:true,max_oas_diff_bp:.4,max_yield_diff_pct:.009,passed:true,error_class:null})});});
+  await page.goto(base+`update.html${bridge?'#bbg-token='+'b'.repeat(64):''}`);
+  await page.waitForFunction(()=>document.querySelector('#service-state')?.textContent.includes('已啟用'));
+  return {context,page,requests,bridgeRequests};
+}
+
+async function selectFour(page,files) {
+  for(const [metric,path] of Object.entries(files)) await page.locator(`input[data-metric="${metric}"]`).setInputFiles(path);
+}
+
+async function runValidUpload(browser,base,width,files,expectedDate) {
+  const {context,page,requests}=await openUploader(browser,base,expectedDate,width);
+  await selectFour(page,files);
+  await page.locator('#validate-files').click();
+  await page.locator('#validation-status.success').waitFor();
+  assert.equal(await page.locator('#summary-date').innerText(),expectedDate);
+  assert.equal(await page.locator('#summary-count').innerText(),'460 / 460');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/uploader overflow`);
+  await page.locator('#upload-password').fill('company password');
+  await page.locator('#publish-data').click();
+  await page.locator('#publish-status.success').waitFor();
+  const publish=requests.find(item=>item.url.endsWith('/publish'));
+  assert.ok(publish,'sanitized publish request was sent');
+  assert.deepEqual(Object.keys(JSON.parse(publish.body)),['data']);
+  assert.equal(/\.xlsx|2Y Percentile|10Y RV|30Y RV|10s30s RV|source_file|sha256/i.test(publish.body),false,'request must not contain workbook identity or hash');
+  assert.equal(JSON.parse(publish.body).data.date,expectedDate);
+  await context.close();
+}
+
+async function runInvalidUpload(browser,base,files,expected,currentDate) {
+  const {context,page,requests}=await openUploader(browser,base,currentDate);
+  await selectFour(page,files);
+  await page.locator('#validate-files').click();
+  await page.locator('#validation-status.error').waitFor();
+  assert.match(await page.locator('#validation-status').innerText(),expected);
+  assert.equal(requests.some(item=>item.url.endsWith('/publish')),false);
+  await context.close();
+}
+
+function luacFixture(root,variant,date,count=40){
+  const output=join(root,`luac-${variant}-${count}.xlsx`);
+  execFileSync('python3',['tests/make_luac_fixture.py','--out',output,'--variant',variant,'--date',date,'--count',String(count)],{stdio:'pipe'});
+  return output;
+}
+
+async function runValidLuacUpload(browser,base,width,file,expectedDate,currentDate,bql=false){
+  const {context,page,requests}=await openUploader(browser,base,expectedDate,width,currentDate);
+  await page.locator('#luac-file').setInputFiles(file);
+  await page.locator('#validate-luac').click();
+  await page.locator('#luac-validation-status.success').waitFor();
+  assert.equal(await page.locator('#luac-summary-date').innerText(),expectedDate);
+  assert.equal(await page.locator('#luac-summary-count').innerText(),'40');
+  assert.equal(await page.locator('#luac-summary-source').innerText(),bql?'BQL 已儲存快取':'純值 Excel');
+  if(bql){assert.equal(await page.locator('#publish-luac').isDisabled(),true);await page.locator('#bql-confirm').check();}
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/luac uploader overflow`);
+  await page.locator('#luac-upload-password').fill('company password');
+  await page.locator('#publish-luac').click();
+  await page.locator('#luac-publish-status.success').waitFor();
+  const publish=requests.find(item=>item.url.endsWith('/publish/luac'));
+  assert.ok(publish,'sanitized LUAC publish request was sent');
+  assert.deepEqual(Object.keys(JSON.parse(publish.body)),['data']);
+  assert.equal(/\.xlsx|source_file|sha256|\/Users\//i.test(publish.body),false);
+  assert.equal(JSON.parse(publish.body).data.date,expectedDate);
+  const python=JSON.parse(execFileSync('python3',['scripts/extract_luac.py',file],{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
+  assert.deepEqual(JSON.parse(publish.body).data,python,'browser and Python LUAC extraction must match');
+  await context.close();
+}
+
+async function runSameDateLuacReview(browser,base,file,currentDate){
+  const {context,page,requests}=await openUploader(browser,base,currentDate,1440,currentDate);
+  await page.locator('#luac-file').setInputFiles(file);await page.locator('#validate-luac').click();await page.locator('#luac-validation-status.success').waitFor();
+  assert.match(await page.locator('#luac-validation-status').innerText(),/人工 PR/);
+  assert.equal(await page.locator('#publish-luac').isDisabled(),true);
+  assert.equal(requests.some(item=>item.url.endsWith('/publish/luac')),false);
+  await context.close();
+}
+
+async function runBloombergDiagnostic(browser,base,file,currentDate){
+  const {context,page,requests,bridgeRequests}=await openUploader(browser,base,currentDate,1440,currentDate,40,true);
+  await page.locator('#bloomberg-diagnostic').waitFor({state:'visible'});
+  await page.locator('#luac-file').setInputFiles(file);await page.locator('#validate-luac').click();await page.locator('#luac-validation-status.success').waitFor();await page.locator('#bql-confirm').check();
+  await page.locator('#probe-bloomberg').click();await page.locator('#bloomberg-status.success').waitFor();
+  const probe=bridgeRequests.find(item=>item.url.endsWith('/probe'));assert.ok(probe);assert.deepEqual(Object.keys(JSON.parse(probe.body)),['data']);assert.equal(/\.xlsx|source_file|sha256|\/Users\//i.test(probe.body),false);
+  assert.equal(requests.some(item=>item.url.endsWith('/publish/luac')),false,'diagnostic must not call the Worker publish endpoint');
+  await context.close();
+}
+
+async function runInvalidLuacUpload(browser,base,file,expected,currentDate,currentCount=40){
+  const {context,page,requests}=await openUploader(browser,base,'2026-09-16',1440,currentDate,currentCount);
+  await page.locator('#luac-file').setInputFiles(file);
+  await page.locator('#validate-luac').click();
+  await page.locator('#luac-validation-status.error').waitFor();
+  assert.match(await page.locator('#luac-validation-status').innerText(),expected);
+  assert.equal(requests.some(item=>item.url.endsWith('/publish/luac')),false);
+  await context.close();
+}
+
+if(require.main===module) (async()=>{
+  const {chromium}=require('playwright');
+  const channel=process.env.RV_BROWSER_CHANNEL;
+  const browser=await chromium.launch({headless:true,...(channel?{channel}:{})});
+  const base=process.argv.find(argument=>argument.startsWith('http://')||argument.startsWith('https://'))||'http://127.0.0.1:8766/';
+  const temporary=mkdtempSync(join(tmpdir(),'rv-upload-test-'));
+  try {
+    for(const width of [1440,768,375]) console.log(await run(browser,base,width));
+    for(const width of [1440,768,375]) console.log(await runBonds(browser,base,width));
+    const currentDate=JSON.parse(readFileSync('assets/rv-data.json','utf8')).date;
+    const nextDate=new Date(`${currentDate}T00:00:00Z`);nextDate.setUTCDate(nextDate.getUTCDate()+1);
+    const expectedDate=nextDate.toISOString().slice(0,10);
+    const valid=fixtures(temporary,'valid',expectedDate);
+    for(const width of [1440,768,375]) await runValidUpload(browser,base,width,valid,expectedDate);
+    await runInvalidUpload(browser,base,fixtures(temporary,'date-mismatch',expectedDate),/日期不一致/,currentDate);
+    await runInvalidUpload(browser,base,fixtures(temporary,'outdated',currentDate),/必須晚於正式站/,currentDate);
+    await runInvalidUpload(browser,base,fixtures(temporary,'missing',expectedDate),/缺值或不是有效數字/,currentDate);
+    await runInvalidUpload(browser,base,fixtures(temporary,'order',expectedDate),/Min ≤ Median ≤ Max/,currentDate);
+    const wrong={...valid};
+    wrong.Spread=join(temporary,'wrong.txt');
+    writeFileSync(wrong.Spread,'not an xlsx');
+    await runInvalidUpload(browser,base,wrong,/必須選取 .xlsx/,currentDate);
+    const currentLuacDate=JSON.parse(readFileSync('assets/luac-bonds.json','utf8')).date;
+    const nextLuacDate=new Date(`${currentLuacDate}T00:00:00Z`);nextLuacDate.setUTCDate(nextLuacDate.getUTCDate()+1);
+    const expectedLuacDate=nextLuacDate.toISOString().slice(0,10),luacValid=luacFixture(temporary,'valid',expectedLuacDate);
+    for(const width of [1440,768,375])await runValidLuacUpload(browser,base,width,luacValid,expectedLuacDate,currentLuacDate);
+    await runValidLuacUpload(browser,base,1440,luacFixture(temporary,'bql',expectedLuacDate),expectedLuacDate,currentLuacDate,true);
+    await runInvalidLuacUpload(browser,base,luacFixture(temporary,'formula',expectedLuacDate),/只允許一個 BQL 公式/,currentLuacDate);
+    await runInvalidLuacUpload(browser,base,luacFixture(temporary,'bql-no-cache',expectedLuacDate),/沒有已儲存的快取值/,currentLuacDate);
+    await runInvalidLuacUpload(browser,base,luacFixture(temporary,'level3',expectedLuacDate),/欄位不符合必要格式/,currentLuacDate);
+    await runInvalidLuacUpload(browser,base,luacFixture(temporary,'nonfinite',expectedLuacDate),/OAS.*無效/,currentLuacDate);
+    await runInvalidLuacUpload(browser,base,luacFixture(temporary,'mismatch',expectedLuacDate),/ID 必須完整一致/,currentLuacDate);
+    await runInvalidLuacUpload(browser,base,luacFixture(temporary,'mixed-date',expectedLuacDate),/資料日期不一致/,currentLuacDate);
+    await runSameDateLuacReview(browser,base,luacFixture(temporary,'valid',currentLuacDate),currentLuacDate);
+    await runBloombergDiagnostic(browser,base,luacFixture(temporary,'bql',currentLuacDate),currentLuacDate);
+    await runInvalidLuacUpload(browser,base,luacFixture(temporary,'valid',expectedLuacDate,25),/超過 ±20%/,currentLuacDate);
+    console.log('browser tests PASS');
+  }
+  finally {rmSync(temporary,{recursive:true,force:true});await browser.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -1,0 +1,8 @@
+{
+  "site_id": "rv-dashboard",
+  "production_url": "https://creditbase02.github.io/rv-dashboard/",
+  "peer": {
+    "site_id": "ib-knowledge-base",
+    "manifest_url": "https://creditbase02.github.io/ib-knowledge-base/integration-manifest.json"
+  }
+}
