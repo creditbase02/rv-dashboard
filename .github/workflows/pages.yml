@@ -61,9 +61,16 @@ jobs:
           else
             base_sha="$BEFORE_SHA"
             if [ -z "$base_sha" ] || echo "$base_sha" | grep -Eq '^0+$'; then
-              base_sha="$(git rev-parse HEAD^)"
+              if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+                base_sha="$(git rev-parse HEAD^)"
+              else
+                base_sha="$GITHUB_SHA"
+                git ls-files > "$changed"
+              fi
             fi
-            git diff --name-only "$base_sha" "$GITHUB_SHA" > "$changed"
+            if [ ! -s "$changed" ]; then
+              git diff --name-only "$base_sha" "$GITHUB_SHA" > "$changed"
+            fi
           fi
           label_option=()
           if [ "$has_label" = true ]; then label_option=(--has-label); fi
