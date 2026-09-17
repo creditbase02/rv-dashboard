@@ -195,6 +195,28 @@ test('duplicate sanitized submission returns its existing PR', async () => {
   } finally { globalThis.fetch = savedFetch; }
 });
 
+test('a transferred App with one installation recovers from its retired installation ID', async () => {
+  const savedFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const value = String(url);
+    calls.push(value);
+    if (value.endsWith('/app/installations/456/access_tokens')) return apiJson({message: 'Not Found'}, 404);
+    if (value.endsWith('/app/installations')) return apiJson([{id: 789}]);
+    if (value.endsWith('/app/installations/789/access_tokens')) return apiJson({token: 'new-installation'});
+    if (value.includes('/contents/assets/rv-data.json')) return apiJson({sha: 'file-sha', content: Buffer.from(JSON.stringify(snapshot('2026-08-05'))).toString('base64')});
+    if (value.endsWith('/git/ref/heads/codex/rv-upload-portal')) return apiJson({object: {sha: 'base-sha'}});
+    if (value.endsWith('/git/refs')) return apiJson({message: 'Reference already exists'}, 422);
+    if (value.includes('/pulls?state=all')) return apiJson([{number: 73, state: 'open', merged_at: null}]);
+    throw new Error(`Unexpected URL ${url}`);
+  };
+  try {
+    assert.deepEqual(await publishSnapshot(await githubEnv(), snapshot()), {id: '73', state: 'open'});
+    assert.equal(calls.includes('https://api.github.com/app/installations'), true);
+    assert.equal(calls.includes('https://api.github.com/app/installations/789/access_tokens'), true);
+  } finally { globalThis.fetch = savedFetch; }
+});
+
 test('successful publish writes only sanitized rv-data and labels one PR', async () => {
   const savedFetch = globalThis.fetch;
   const calls = [];

@@ -184,9 +184,25 @@ async function githubFetch(env, path, options = {}, token = null) {
   return body;
 }
 
-async function installationToken(env) {
-  const result = await githubFetch(env, `/app/installations/${env.GITHUB_APP_INSTALLATION_ID}/access_tokens`, {method: 'POST'});
+async function installationAccessToken(env, installationId) {
+  const result = await githubFetch(env, `/app/installations/${installationId}/access_tokens`, {method: 'POST'});
   return result.token;
+}
+
+async function installationToken(env) {
+  try {
+    return await installationAccessToken(env, env.GITHUB_APP_INSTALLATION_ID);
+  } catch (error) {
+    // A GitHub App ownership transfer creates a new installation ID.  Only
+    // recover automatically when the App has exactly one installation, so an
+    // unexpected second installation can never redirect a data publish.
+    if (error.status !== 404) throw error;
+    const installations = await githubFetch(env, '/app/installations');
+    if (!Array.isArray(installations) || installations.length !== 1 || !Number.isInteger(installations[0]?.id)) {
+      throw new Error('GitHub App 安裝識別已變更；請更新 GITHUB_APP_INSTALLATION_ID');
+    }
+    return installationAccessToken(env, installations[0].id);
+  }
 }
 
 function utf8Base64(value) {
