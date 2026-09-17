@@ -13,6 +13,12 @@ Required encrypted Worker secrets:
 - `GITHUB_APP_INSTALLATION_ID`
 - `GITHUB_APP_PRIVATE_KEY`
 
+After an App ownership transfer, GitHub creates a new installation ID. The
+Worker can recover once when the transferred App has exactly one installation;
+if the App has more than one installation, update
+`GITHUB_APP_INSTALLATION_ID` explicitly so publishing cannot target an
+unexpected repository.
+
 The GitHub App must be installed only on `rv-dashboard` with repository permissions
 for Contents (read/write), Pull requests (read/write), and Issues (read/write).
 Create repository variable `RV_UPLOAD_APP_LOGIN` with the App bot login (for example
