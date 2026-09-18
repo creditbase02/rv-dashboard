@@ -14,4 +14,4 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: python3 peer_status.py --require-reachable
-      - run: curl --fail --location --retry 2 --max-time 20 https://larry890122.github.io/rv-dashboard/
+      - run: curl --fail --location --retry 2 --max-time 20 https://creditbase02.github.io/rv-dashboard/
