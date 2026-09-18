@@ -250,7 +250,11 @@ async function publishData(env, data, definition) {
   const encoded = current.content || (await githubFetch(env, `/repos/${repo}/git/blobs/${current.sha}`, {}, token)).content;
   const currentData = JSON.parse(decodeGithubContent(encoded));
   definition.validate(currentData);
-  if (data.date <= currentData.date) throw new Error(`資料日期 ${data.date} 必須晚於正式站 ${currentData.date}`);
+  if (data.date < currentData.date || (data.date === currentData.date && !definition.allowSameDate)) {
+    throw new Error(definition.allowSameDate
+      ? `LUAC 資料日期 ${data.date} 不得早於正式站 ${currentData.date}`
+      : `資料日期 ${data.date} 必須晚於正式站 ${currentData.date}`);
+  }
   if (definition.checkCurrent) definition.checkCurrent(data, currentData);
   const content = `${JSON.stringify(data, null, definition.compact ? 0 : 2)}\n`;
   const digest = await digestText(JSON.stringify(data));
@@ -311,7 +315,7 @@ export async function publishLuacSnapshot(env, data) {
   return publishData(env, data, {
     name: 'LUAC', path: 'assets/luac-bonds.json', branch: 'luac-data', compact: true,
     productionLabel: 'automated-luac-data', previewLabel: 'luac-data-preview',
-    validate: value => validateLuacSnapshot(value), checkCurrent: checkLuacDrift,
+    validate: value => validateLuacSnapshot(value), checkCurrent: checkLuacDrift, allowSameDate: true,
     summary: result => `Bonds: ${result.count}; flagged records: ${result.anomalies}`,
   });
 }

@@ -24,8 +24,8 @@ def load_json(path: Path) -> dict:
 def validate_fast_luac(current: dict, previous: dict, current_path: Path, public_root: Path) -> None:
     count, anomalies = validate_luac(current)
     previous_count, _ = validate_luac(previous)
-    if current["date"] <= previous["date"]:
-        raise ValueError(f"Data date {current['date']} must be later than {previous['date']}")
+    if current["date"] < previous["date"]:
+        raise ValueError(f"Data date {current['date']} must not be earlier than {previous['date']}")
     validate_count_drift(count, previous_count)
     if current_path.stat().st_size > MAX_PUBLISH_BYTES:
         raise ValueError("LUAC snapshot exceeds the 4 MiB publish limit")

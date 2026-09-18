@@ -268,7 +268,7 @@ test('GitHub update failure cleans up the automation branch', async () => {
   } finally { globalThis.fetch = savedFetch; }
 });
 
-test('production LUAC publish writes exactly one asset with its dedicated branch and label', async () => {
+test('production LUAC publish allows a same-day correction and writes exactly one asset', async () => {
   const savedFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, options = {}) => {
@@ -287,7 +287,7 @@ test('production LUAC publish writes exactly one asset with its dedicated branch
     throw new Error(`Unexpected URL ${url}`);
   };
   try {
-    assert.deepEqual(await publishLuacSnapshot(await githubEnv({PUBLISH_MODE: 'production', LUAC_UPLOAD_ENABLED: 'true'}), luacSnapshot()), {id: '81', state: 'pending'});
+    assert.deepEqual(await publishLuacSnapshot(await githubEnv({PUBLISH_MODE: 'production', LUAC_UPLOAD_ENABLED: 'true'}), luacSnapshot('2026-09-15')), {id: '81', state: 'pending'});
     const updates = calls.filter(call => call.method === 'PUT');
     assert.equal(updates.length, 1);
     assert.match(updates[0].url, /assets\/luac-bonds\.json$/);
