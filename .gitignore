@@ -11,3 +11,9 @@ data-audit.json
 *.pptx
 *.pdf
 *.inspect.ndjson
+
+# Local reference material kept outside version control
+# (Bloomberg screenshot, planning notes, generated analysis artifact)
+RV ex1.png
+luac_rv.md
+.ua/
