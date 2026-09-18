@@ -101,6 +101,11 @@ class FastDataTests(unittest.TestCase):
         previous = copy.deepcopy(current)
         previous["date"] = "2026-09-14"
         validate_fast_luac(current, previous, ROOT / "assets" / "luac-bonds.json", ROOT / "public")
+        previous["date"] = current["date"]
+        validate_fast_luac(current, previous, ROOT / "assets" / "luac-bonds.json", ROOT / "public")
+        previous["date"] = "2099-01-01"
+        with self.assertRaisesRegex(ValueError, "must not be earlier"):
+            validate_fast_luac(current, previous, ROOT / "assets" / "luac-bonds.json", ROOT / "public")
         broken = copy.deepcopy(current)
         broken["records"][0][8] = None
         with self.assertRaisesRegex(ValueError, "invalid numeric"):

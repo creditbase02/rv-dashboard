@@ -306,12 +306,16 @@ async function runValidLuacUpload(browser,base,width,file,expectedDate,currentDa
   await context.close();
 }
 
-async function runSameDateLuacReview(browser,base,file,currentDate){
+async function runSameDateLuacCorrection(browser,base,file,currentDate){
   const {context,page,requests}=await openUploader(browser,base,currentDate,1440,currentDate);
   await page.locator('#luac-file').setInputFiles(file);await page.locator('#validate-luac').click();await page.locator('#luac-validation-status.success').waitFor();
-  assert.match(await page.locator('#luac-validation-status').innerText(),/人工 PR/);
-  assert.equal(await page.locator('#publish-luac').isDisabled(),true);
-  assert.equal(requests.some(item=>item.url.endsWith('/publish/luac')),false);
+  assert.match(await page.locator('#luac-validation-status').innerText(),/同日更正 PR/);
+  assert.equal(await page.locator('#publish-luac').isDisabled(),false);
+  await page.locator('#luac-upload-password').fill('company password');
+  await page.locator('#publish-luac').click();await page.locator('#luac-publish-status.success').waitFor();
+  const publish=requests.find(item=>item.url.endsWith('/publish/luac'));
+  assert.ok(publish,'same-day LUAC correction was sent');
+  assert.equal(JSON.parse(publish.body).data.date,currentDate);
   await context.close();
 }
 
@@ -368,7 +372,7 @@ if(require.main===module) (async()=>{
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'nonfinite',expectedLuacDate),/OAS.*無效/,currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'mismatch',expectedLuacDate),/ID 必須完整一致/,currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'mixed-date',expectedLuacDate),/資料日期不一致/,currentLuacDate);
-    await runSameDateLuacReview(browser,base,luacFixture(temporary,'valid',currentLuacDate),currentLuacDate);
+    await runSameDateLuacCorrection(browser,base,luacFixture(temporary,'valid',currentLuacDate),currentLuacDate);
     await runBloombergDiagnostic(browser,base,luacFixture(temporary,'bql',currentLuacDate),currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'valid',expectedLuacDate,25),/超過 ±20%/,currentLuacDate);
     console.log('browser tests PASS');

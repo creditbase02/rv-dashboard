@@ -244,10 +244,10 @@
       const parsed=await parseLuacWorkbook(file),data=parsed.data,count=data.records.length,anomalies=data.records.filter(record=>record[10].length).length;
       if(state.currentLuacDate&&data.date<state.currentLuacDate)throw Error(`資料日期 ${data.date} 早於正式站 ${state.currentLuacDate}`);
       if(state.currentLuacCount){const low=state.currentLuacCount*.8,high=state.currentLuacCount*1.2;if(count<low||count>high)throw Error(`債券筆數由 ${state.currentLuacCount} 變為 ${count}，超過 ±20%，需走人工 PR`);}
-      state.luacData=data;state.luacSourceMode=parsed.sourceMode;state.luacPublishEligible=!state.currentLuacDate||data.date>state.currentLuacDate;luacFile.value='';luacFileName.textContent='原始檔已從程式狀態釋放';
+      state.luacData=data;state.luacSourceMode=parsed.sourceMode;state.luacPublishEligible=!state.currentLuacDate||data.date>=state.currentLuacDate;luacFile.value='';luacFileName.textContent='原始檔已從程式狀態釋放';
       document.querySelector('#luac-summary-date').textContent=data.date;document.querySelector('#luac-summary-count').textContent=count.toLocaleString('en-US');document.querySelector('#luac-summary-anomalies').textContent=anomalies.toLocaleString('en-US');document.querySelector('#luac-summary-source').textContent=parsed.sourceMode==='bql_cache'?'BQL 已儲存快取':'純值 Excel';luacValidationSummary.hidden=false;
       bqlConfirm.checked=false;bqlConfirmWrap.hidden=parsed.sourceMode!=='bql_cache';
-      const sameDate=!state.luacPublishEligible?' 資料日與正式站相同，只能用於 Bloomberg 診斷或人工 PR。':'';
+      const sameDate=data.date===state.currentLuacDate?' 資料日與正式站相同，將建立同日更正 PR。':'';
       setStatus(luacValidationStatus,'success',`驗證通過。原始 Excel 已釋放，只保留精簡公開資料。${sameDate}`);refreshLuacActions();
     }catch(error){state.luacData=null;state.luacSourceMode=null;state.luacPublishEligible=false;bqlConfirm.checked=false;bqlConfirmWrap.hidden=true;refreshLuacActions();setStatus(luacValidationStatus,'error',error.message||String(error));}
   }
