@@ -6,7 +6,8 @@ import math
 from datetime import date
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+OTHER_IG = "Other IG"
 TENOR_BUCKETS = ("FRN", "≤5Y", ">5Y–10Y", ">10Y / Perpetual")
 RATING_ORDER = (
     "AAA", "AA+", "AA", "AA-", "A+", "A", "A-",
@@ -68,11 +69,21 @@ def _validate_pairs(value: object, field: str, *, allow_empty: bool = False) -> 
     return total
 
 
+def _validate_top_pairs(value: object, field: str, denominator: int) -> None:
+    if not isinstance(value, list) or len(value) > 5:
+        raise ValueError(f"Supply {field} Top 5 has the wrong shape")
+    total = _validate_pairs(value, field, allow_empty=True)
+    if any(amount <= 0 for _, amount in value) or total > denominator:
+        raise ValueError(f"Supply {field} Top 5 amount is invalid")
+    if value != sorted(value, key=lambda row: (-row[1], row[0].casefold())):
+        raise ValueError(f"Supply {field} Top 5 order is invalid")
+
+
 def validate_supply(data: dict) -> dict[str, int]:
     expected = {
         "schema_version", "date", "year", "currency", "row_count",
         "ytd_usd", "mtd_usd", "breakdowns", "monthly", "peer_definitions",
-        "peer_tickers", "quality",
+        "peer_tickers", "top_tickers", "quality",
     }
     if not isinstance(data, dict) or set(data) != expected:
         raise ValueError("Unexpected Supply snapshot fields")
@@ -117,7 +128,7 @@ def validate_supply(data: dict) -> dict[str, int]:
         if not isinstance(definition, dict) or set(definition) != {"name", "tickers"}:
             raise ValueError(f"Supply peer definition {index} has the wrong shape")
         name, tickers = definition["name"], definition["tickers"]
-        if not isinstance(name, str) or not name.strip() or name == "Others" or name in peer_names:
+        if not isinstance(name, str) or not name.strip() or name in {"Others", OTHER_IG} or name in peer_names:
             raise ValueError(f"Supply peer definition {index} has an invalid name")
         if not isinstance(tickers, list) or not tickers:
             raise ValueError(f"Supply peer definition {name} has no tickers")
@@ -126,7 +137,7 @@ def validate_supply(data: dict) -> dict[str, int]:
                 raise ValueError(f"Supply peer definition {name} has an invalid ticker")
             peer_tickers_seen.add(ticker)
         peer_names.append(name)
-    expected_peer_names = [*peer_names, "Others"]
+    expected_peer_names = [*peer_names, OTHER_IG]
     if [record[0] for record in breakdowns["peer_group"]] != expected_peer_names:
         raise ValueError("Supply peer group order does not match definitions")
 
@@ -151,6 +162,40 @@ def validate_supply(data: dict) -> dict[str, int]:
     for name in peer_names:
         if _validate_pairs(peer_tickers[name], f"peer ticker {name}", allow_empty=True) != peer_totals[name]:
             raise ValueError(f"Supply peer ticker group {name} does not reconcile")
+
+    top = data["top_tickers"]
+    if not isinstance(top, dict) or set(top) != {"ytd", "monthly"}:
+        raise ValueError("Unexpected Supply Top 5 fields")
+    if not isinstance(top["ytd"], dict) or set(top["ytd"]) != {"industry", "rating", "peer_group"}:
+        raise ValueError("Unexpected Supply YTD Top 5 fields")
+    for field in ("industry", "rating", "peer_group"):
+        rows = top["ytd"][field]
+        expected_rows = breakdowns[field]
+        if not isinstance(rows, list) or [row[0] for row in rows if isinstance(row, list) and len(row) == 2] != [row[0] for row in expected_rows]:
+            raise ValueError(f"Supply {field} Top 5 categories do not match")
+        totals = dict(expected_rows)
+        for name, ticker_rows in rows:
+            _validate_top_pairs(ticker_rows, f"{field} {name}", totals[name])
+    for name in peer_names:
+        if dict(top["ytd"]["peer_group"])[name] != peer_tickers[name][:5]:
+            raise ValueError(f"Supply peer Top 5 {name} does not match ticker totals")
+
+    top_monthly = top["monthly"]
+    if not isinstance(top_monthly, dict) or set(top_monthly) != {"total", "peer_groups"}:
+        raise ValueError("Unexpected Supply monthly Top 5 fields")
+    if not isinstance(top_monthly["total"], list) or len(top_monthly["total"]) != 12:
+        raise ValueError("Supply monthly total Top 5 has the wrong shape")
+    for month, ticker_rows in enumerate(top_monthly["total"]):
+        _validate_top_pairs(ticker_rows, f"month {month + 1}", monthly["total"][month])
+    top_peer_monthly = top_monthly["peer_groups"]
+    if not isinstance(top_peer_monthly, list) or [row[0] for row in top_peer_monthly if isinstance(row, list) and len(row) == 2] != expected_peer_names:
+        raise ValueError("Supply monthly peer Top 5 groups do not match")
+    monthly_peer_totals = dict(peer_monthly)
+    for name, months in top_peer_monthly:
+        if not isinstance(months, list) or len(months) != 12:
+            raise ValueError(f"Supply monthly peer Top 5 {name} has the wrong shape")
+        for month, ticker_rows in enumerate(months):
+            _validate_top_pairs(ticker_rows, f"month {month + 1} {name}", monthly_peer_totals[name][month])
 
     quality = data["quality"]
     if not isinstance(quality, dict) or set(quality) != {"date_corrections", "duplicate_cusip_groups"}:

@@ -58,25 +58,41 @@ function luacSnapshot(date = '2026-09-16', count = 25) {
 
 function supplySnapshot(date = '2026-09-17', rowCount = 10, ytd = 1000) {
   const first = Math.floor(ytd * 0.4), second = Math.floor(ytd * 0.2), others = ytd - first - second;
+  const emptyMonths = () => Array.from({length: 12}, () => []);
+  const groupAMonths = emptyMonths(), groupBMonths = emptyMonths(), otherMonths = emptyMonths();
+  groupAMonths[0] = [['AAA', first]];
+  groupBMonths[0] = [['BBB', second]];
+  otherMonths[0] = [['OTHER', others]];
   return {
-    schema_version: 1, date, year: Number(date.slice(0, 4)), currency: 'USD',
+    schema_version: 2, date, year: Number(date.slice(0, 4)), currency: 'USD',
     row_count: rowCount, ytd_usd: ytd, mtd_usd: ytd,
     breakdowns: {
       industry: [['Finance', ytd]],
       rating: [['A', first], ['BBB', ytd - first]],
       tenor: [['FRN', 0], ['≤5Y', first], ['>5Y–10Y', second], ['>10Y / Perpetual', others]],
-      peer_group: [['Group A', first], ['Group B', second], ['Others', others]],
+      peer_group: [['Group A', first], ['Group B', second], ['Other IG', others]],
     },
     monthly: {
       total: [ytd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       peer_groups: [
         ['Group A', [first, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
         ['Group B', [second, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
-        ['Others', [others, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+        ['Other IG', [others, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
       ],
     },
     peer_definitions: [{name: 'Group A', tickers: ['AAA']}, {name: 'Group B', tickers: ['BBB']}],
     peer_tickers: {'Group A': [['AAA', first]], 'Group B': [['BBB', second]]},
+    top_tickers: {
+      ytd: {
+        industry: [['Finance', [['AAA', first]]]],
+        rating: [['A', [['AAA', first]]], ['BBB', [['BBB', second]]]],
+        peer_group: [['Group A', [['AAA', first]]], ['Group B', [['BBB', second]]], ['Other IG', [['OTHER', others]]]],
+      },
+      monthly: {
+        total: [[['OTHER', others], ['AAA', first], ['BBB', second]].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])), ...emptyMonths().slice(1)],
+        peer_groups: [['Group A', groupAMonths], ['Group B', groupBMonths], ['Other IG', otherMonths]],
+      },
+    },
     quality: {date_corrections: 5, duplicate_cusip_groups: 2},
   };
 }
@@ -142,6 +158,27 @@ test('strict Supply snapshot validates exact reconciliation and safe metadata', 
   const provenance = {...supplySnapshot(), source_file: 'private.xlsx'};
   assert.throws(() => validateSupplySnapshot(provenance), /欄位不正確/);
   assert.throws(() => validateSupplySnapshot({...supplySnapshot(), date: '2026-02-31'}), /欄位不正確/);
+  assert.throws(() => validateSupplySnapshot({...supplySnapshot(), schema_version: 1}), /欄位不正確/);
+});
+
+test('Supply Top 5 rejects duplicates, disorder, and per-security payloads', () => {
+  const snapshot = supplySnapshot();
+  const [[ticker, value]] = snapshot.top_tickers.ytd.industry[0][1];
+  const duplicate = supplySnapshot();
+  duplicate.top_tickers.ytd.industry[0][1] = [[ticker, value], [ticker, value]];
+  assert.throws(() => validateSupplySnapshot(duplicate), /列無效/);
+  const unordered = supplySnapshot();
+  unordered.top_tickers.ytd.industry[0][1] = [['ZZZ', value], [ticker, value]];
+  assert.throws(() => validateSupplySnapshot(unordered), /排序不正確/);
+  const leaked = supplySnapshot();
+  leaked.top_tickers.ytd.industry[0][1] = [[ticker, value, '912828XX1']];
+  assert.throws(() => validateSupplySnapshot(leaked), /列無效/);
+  const tooMany = supplySnapshot();
+  tooMany.top_tickers.ytd.industry[0][1] = Array.from({length: 6}, (_, index) => [`T${index}`, value]);
+  assert.throws(() => validateSupplySnapshot(tooMany), /Top 5 結構無效/);
+  for (const field of ['CUSIP', 'BB ID', 'ISIN', 'Tranche Size', 'Pricing Date', 'workbook', '.xlsx']) {
+    assert.equal(JSON.stringify(supplySnapshot()).includes(field), false, `${field} must not reach the public snapshot`);
+  }
 });
 
 test('session tokens expire after 15 minutes and reject tampering', async () => {

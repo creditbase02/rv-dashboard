@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from supply_data import RATING_ORDER, SCHEMA_VERSION, TENOR_BUCKETS, validate_supply
+from supply_data import OTHER_IG, RATING_ORDER, SCHEMA_VERSION, TENOR_BUCKETS, validate_supply
 
 MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -194,6 +194,10 @@ def _pairs(totals: dict[str, int], order: list[str] | None = None) -> list[list[
     return [[key, totals.get(key, 0)] for key in keys]
 
 
+def _top(totals: dict[str, int]) -> list[list[object]]:
+    return _pairs(totals)[:5]
+
+
 def extract(workbook: Path, peer_workbook: Path | None = None, peer_definitions: list[dict[str, object]] | None = None) -> tuple[dict, dict]:
     if (peer_workbook is None) == (peer_definitions is None):
         raise ValueError("Provide exactly one peer mapping source")
@@ -260,10 +264,16 @@ def extract(workbook: Path, peer_workbook: Path | None = None, peer_definitions:
     tenor: defaultdict[str, int] = defaultdict(int)
     peer: defaultdict[str, int] = defaultdict(int)
     peer_tickers: dict[str, defaultdict[str, int]] = {name: defaultdict(int) for name in peer_names}
+    industry_tickers: defaultdict[str, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
+    rating_tickers: defaultdict[str, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
+    peer_top_tickers: defaultdict[str, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
     monthly_total = [0] * 12
-    monthly_peer = {name: [0] * 12 for name in [*peer_names, "Others"]}
+    all_peer_names = [*peer_names, OTHER_IG]
+    monthly_peer = {name: [0] * 12 for name in all_peer_names}
+    monthly_total_tickers = [defaultdict(int) for _ in range(12)]
+    monthly_peer_tickers = {name: [defaultdict(int) for _ in range(12)] for name in all_peer_names}
     for record in records:
-        group = peer_lookup.get(record["ticker"], "Others")
+        group = peer_lookup.get(record["ticker"], OTHER_IG)
         bucket = tenor_bucket(record["security"], record["tenor"], record["row"])
         amount, month = record["usd"], record["date"].month - 1
         industry[record["industry"]] += amount
@@ -272,7 +282,12 @@ def extract(workbook: Path, peer_workbook: Path | None = None, peer_definitions:
         peer[group] += amount
         monthly_total[month] += amount
         monthly_peer[group][month] += amount
-        if group != "Others":
+        industry_tickers[record["industry"]][record["ticker"]] += amount
+        rating_tickers[record["rating"]][record["ticker"]] += amount
+        peer_top_tickers[group][record["ticker"]] += amount
+        monthly_total_tickers[month][record["ticker"]] += amount
+        monthly_peer_tickers[group][month][record["ticker"]] += amount
+        if group != OTHER_IG:
             peer_tickers[group][record["ticker"]] += amount
 
     data_date = max(record["date"] for record in records)
@@ -293,14 +308,25 @@ def extract(workbook: Path, peer_workbook: Path | None = None, peer_definitions:
             "industry": _pairs(industry),
             "rating": _pairs(rating, rating_order),
             "tenor": _pairs(tenor, list(TENOR_BUCKETS)),
-            "peer_group": _pairs(peer, [*peer_names, "Others"]),
+            "peer_group": _pairs(peer, all_peer_names),
         },
         "monthly": {
             "total": monthly_total,
-            "peer_groups": [[name, monthly_peer[name]] for name in [*peer_names, "Others"]],
+            "peer_groups": [[name, monthly_peer[name]] for name in all_peer_names],
         },
         "peer_definitions": definitions,
         "peer_tickers": {name: _pairs(peer_tickers[name]) for name in peer_names},
+        "top_tickers": {
+            "ytd": {
+                "industry": [[name, _top(industry_tickers[name])] for name, _ in _pairs(industry)],
+                "rating": [[name, _top(rating_tickers[name])] for name, _ in _pairs(rating, rating_order)],
+                "peer_group": [[name, _top(peer_top_tickers[name])] for name in all_peer_names],
+            },
+            "monthly": {
+                "total": [_top(tickers) for tickers in monthly_total_tickers],
+                "peer_groups": [[name, [_top(tickers) for tickers in monthly_peer_tickers[name]]] for name in all_peer_names],
+            },
+        },
         "quality": {
             "date_corrections": len(corrections),
             "duplicate_cusip_groups": duplicate_cusips,

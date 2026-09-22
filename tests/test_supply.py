@@ -24,8 +24,30 @@ class SupplyTests(unittest.TestCase):
         cls.data = json.loads(cls.data_path.read_text(encoding="utf-8"))
         cls.public = ROOT / "public"
 
+    def test_legacy_schema_and_per_security_payloads_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "schema"):
+            validate_supply({**self.data, "schema_version": 1})
+        duplicate = copy.deepcopy(self.data)
+        pairs = duplicate["top_tickers"]["ytd"]["industry"][0][1]
+        pairs[-1] = list(pairs[0])
+        with self.assertRaisesRegex(ValueError, "duplicate category"):
+            validate_supply(duplicate)
+        unordered = copy.deepcopy(self.data)
+        rows = unordered["top_tickers"]["ytd"]["industry"][0][1]
+        rows[0], rows[1] = rows[1], rows[0]
+        with self.assertRaisesRegex(ValueError, "order is invalid"):
+            validate_supply(unordered)
+        leaked = copy.deepcopy(self.data)
+        leaked["top_tickers"]["ytd"]["industry"][0][1][0].append("912828XX1")
+        with self.assertRaisesRegex(ValueError, "wrong shape"):
+            validate_supply(leaked)
+        text = json.dumps(self.data)
+        for field in ("CUSIP", "BB ID", "ISIN", "Tranche Size", "Pricing Date", "source_file", "workbook", ".xlsx"):
+            self.assertNotIn(field, text)
+
     def test_initial_snapshot_matches_approved_acceptance_values(self):
         result = validate_supply(self.data)
+        self.assertEqual(self.data["schema_version"], 2)
         self.assertEqual(self.data["date"], "2026-09-17")
         self.assertEqual(self.data["year"], 2026)
         self.assertEqual(self.data["row_count"], 1606)
@@ -34,6 +56,26 @@ class SupplyTests(unittest.TestCase):
         self.assertEqual(result["date_corrections"], 5)
         self.assertEqual(result["duplicate_cusip_groups"], 12)
         self.assertLess(self.data_path.stat().st_size, MAX_PUBLISH_BYTES)
+
+    def test_top_tickers_are_compact_sorted_and_use_other_ig(self):
+        self.assertNotIn("Others", json.dumps(self.data))
+        self.assertEqual(self.data["breakdowns"]["peer_group"][-1][0], "Other IG")
+        for scope in ("industry", "rating", "peer_group"):
+            totals = dict(self.data["breakdowns"][scope])
+            for category, pairs in self.data["top_tickers"]["ytd"][scope]:
+                self.assertLessEqual(len(pairs), 5)
+                self.assertEqual(len({ticker for ticker, _ in pairs}), len(pairs))
+                self.assertEqual(pairs, sorted(pairs, key=lambda row: (-row[1], row[0].casefold())))
+                self.assertLessEqual(sum(value for _, value in pairs), totals[category])
+        monthly = self.data["top_tickers"]["monthly"]
+        self.assertEqual(len(monthly["total"]), 12)
+        for month, pairs in enumerate(monthly["total"]):
+            self.assertLessEqual(sum(value for _, value in pairs), self.data["monthly"]["total"][month])
+        peer_totals = dict(self.data["monthly"]["peer_groups"])
+        for group, month_lists in monthly["peer_groups"]:
+            self.assertEqual(len(month_lists), 12)
+            for month, pairs in enumerate(month_lists):
+                self.assertLessEqual(sum(value for _, value in pairs), peer_totals[group][month])
 
     def test_all_aggregate_views_reconcile_exactly(self):
         for name in ("industry", "rating", "tenor", "peer_group"):
@@ -90,6 +132,8 @@ class SupplyTests(unittest.TestCase):
             lambda data: data["breakdowns"]["rating"].reverse(),
             lambda data: data["peer_definitions"][1]["tickers"].append(data["peer_definitions"][0]["tickers"][0]),
             lambda data: data["quality"].update(source_file="private.xlsx"),
+            lambda data: data["top_tickers"]["ytd"]["industry"][0][1].reverse(),
+            lambda data: data.update(schema_version=1),
         )
         for mutate in mutations:
             broken = copy.deepcopy(self.data)
