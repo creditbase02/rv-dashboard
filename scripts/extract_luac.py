@@ -15,7 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from luac_data import COLUMNS, quality_flags, validate_luac
+from luac_data import COLUMNS, SCHEMA_VERSION, quality_flags, validate_luac
+from peer_data import parse_peer_definitions
 
 MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -131,7 +132,11 @@ def require_number(value: object, field: str, row: int) -> float:
     return value
 
 
-def extract(path: Path) -> dict:
+def extract(path: Path, peer_workbook: Path | None = None, peer_definitions: list[dict[str, object]] | None = None) -> dict:
+    if (peer_workbook is None) == (peer_definitions is None):
+        raise ValueError("Provide exactly one peer mapping source")
+    definitions = parse_peer_definitions(peer_workbook) if peer_workbook else peer_definitions
+    assert definitions is not None
     with zipfile.ZipFile(path) as archive:
         sheet_path, date_1904 = workbook_sheet(archive)
         values, maximum_row, source_mode = cells(archive, sheet_path, shared_strings(archive))
@@ -191,7 +196,13 @@ def extract(path: Path) -> dict:
             require_text(source[10], "industry", 0),
             quality_flags(years, oas, bond_yield),
         ])
-    result = {"schema_version": 1, "date": data_dates.pop(), "columns": list(COLUMNS), "records": records}
+    result = {
+        "schema_version": SCHEMA_VERSION,
+        "date": data_dates.pop(),
+        "columns": list(COLUMNS),
+        "peer_definitions": definitions,
+        "records": records,
+    }
     validate_luac(result)
     extract.source_mode = source_mode
     return result
@@ -200,10 +211,11 @@ def extract(path: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workbook", type=Path)
+    parser.add_argument("--peers", required=True, type=Path, help="Peer Group workbook with TICKER and Peer Group columns")
     parser.add_argument("--output", type=Path, help="Write sanitized JSON here; defaults to stdout")
     parser.add_argument("--audit", type=Path, help="Write private validation summary outside the repository")
     arguments = parser.parse_args()
-    data = extract(arguments.workbook)
+    data = extract(arguments.workbook, peer_workbook=arguments.peers)
     count, anomalies = validate_luac(data)
     serialized = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n"
     if arguments.output:

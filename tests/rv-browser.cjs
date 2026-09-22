@@ -90,6 +90,10 @@ async function runBonds(browser,base,width=1440){
   assert.equal(await page.locator('#issuer-filter').count(),0);
   assert.equal(await page.locator('#curve-group option[value=ticker]').count(),0);
   assert.deepEqual(await page.locator('.filter-card').evaluateAll(cards=>cards.map(card=>card.dataset.filter)),['rating','industry','ticker']);
+  assert.equal(await page.locator('#industry-filter-title').innerText(),'產業');
+  assert.equal(await page.locator('[name=industry-dimension][value=industry]').isChecked(),true);
+  assert.equal(await page.locator('#curve-group option[value=peer_group]').count(),1);
+  assert.equal(await page.locator('#point-group option[value=peer_group]').count(),1);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/bonds overflow`);
 
   if(width===1440){
@@ -115,6 +119,33 @@ async function runBonds(browser,base,width=1440){
     await page.locator('#point-group').selectOption('industry');
     assert.equal(await page.locator('#point-group').inputValue(),'band');
     assert.match(await page.locator('#grouping-notice').innerText(),/1–10/);
+    await page.locator('#reset-filters').click();
+
+    const mappedTickers=new Set(data.peer_definitions.flatMap(definition=>definition.tickers));
+    const mappedRecords=data.records.filter(record=>mappedTickers.has(record[3]));
+    const inBands=record=>['AAA','AA','A','BBB'].includes(model.ratingBand(record[5]));
+    const expectedPeerVisible=mappedRecords.filter(inBands).length,unmapped=data.records.length-mappedRecords.length;
+    await page.locator('[name=industry-dimension][value=peer_group]').check();
+    assert.equal(await page.locator('#industry-filter-title').innerText(),'Peer Group');
+    assert.deepEqual((await page.locator('#industry-filter input').evaluateAll(inputs=>inputs.map(input=>input.value))).sort(),data.peer_definitions.map(definition=>definition.name).sort());
+    const peerStatus=await page.locator('#bond-status').innerText();
+    assert.ok(peerStatus.includes(`顯示 ${expectedPeerVisible.toLocaleString('en-US')} 檔`),peerStatus);
+    assert.ok(peerStatus.includes(`排除 ${unmapped.toLocaleString('en-US')} 檔未分類`),peerStatus);
+    assert.match(await page.locator('#chart-subtitle').innerText(),/Peer Group 模式只顯示已分類債券/);
+    const peerName=data.peer_definitions[0].name,peerTickers=new Set(data.peer_definitions[0].tickers);
+    await page.locator(`#industry-filter input[value="${peerName}"]`).check();
+    const peerRows=(await page.locator('#bond-rows tr td:nth-child(3)').allInnerTexts()).map(value=>value.trim());
+    assert.ok(peerRows.length>0);
+    assert.ok(peerRows.every(ticker=>peerTickers.has(ticker)),peerRows.join(','));
+    assert.equal(peerRows.length,Math.min(50,mappedRecords.filter(record=>peerTickers.has(record[3])&&inBands(record)).length));
+    await page.locator('#point-group').selectOption('peer_group');
+    assert.equal(await page.locator('#point-group').inputValue(),'peer_group');
+    assert.match(await page.locator('#curve-legend').innerText(),/點位顏色｜Peer Group/);
+    await page.locator('#reset-filters').click();
+    assert.equal(await page.locator('#industry-filter-title').innerText(),'產業');
+    assert.equal(await page.locator('[name=industry-dimension][value=industry]').isChecked(),true);
+    assert.equal((await page.locator('#bond-status').innerText()).includes('未分類'),false);
+
     await page.locator('#industry-filter input').first().check();
     await page.locator('#point-group').selectOption('industry');await page.locator('#curve-group').selectOption('industry');
     assert.equal(await page.locator('#point-group').inputValue(),'industry');assert.equal(await page.locator('#curve-group').inputValue(),'industry');
@@ -376,13 +407,13 @@ function fixtures(root,variant,date) {
   return Object.fromEntries(Object.entries(FILES).map(([metric,name])=>[metric,join(output,name)]));
 }
 
-async function openUploader(browser,base,expectedDate,width=1440,currentLuacDate='2026-09-15',currentLuacCount=40,bridge=false,currentSupply=null) {
+async function openUploader(browser,base,expectedDate,width=1440,currentLuacDate='2026-09-15',currentLuacCount=40,bridge=false,currentSupply=null,currentLuacPeers=null) {
   const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width<650});
   const page=await context.newPage();
   const requests=[],bridgeRequests=[];
   const supplySnapshot=currentSupply||JSON.parse(readFileSync('assets/supply-data.json','utf8'));
   await page.route('**/assets/upload-config.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({enabled:true,luac_enabled:true,supply_enabled:true,api_url:'https://rv-upload-service.example.workers.dev'})}));
-  await page.route('**/assets/luac-bonds.json*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({date:currentLuacDate,records:Array.from({length:currentLuacCount},()=>[])})}));
+  await page.route('**/assets/luac-bonds.json*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({date:currentLuacDate,records:Array.from({length:currentLuacCount},()=>[]),peer_definitions:currentLuacPeers||[]})}));
   await page.route('**/assets/supply-data.json*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify(supplySnapshot)}));
   await page.route('https://rv-upload-service.example.workers.dev/**',async route=>{
     const request=route.request();
@@ -414,7 +445,7 @@ function supplyFixture(root,variant='valid'){
 async function runValidSupplyUpload(browser,base,width,fixture,usePeer=true){
   const {context,page,requests}=await openUploader(browser,base,fixture.snapshot.date,width,'2026-09-15',40,false,fixture.snapshot);
   await page.locator('#supply-file').setInputFiles(fixture.workbook);
-  if(usePeer)await page.locator('#supply-peer-file').setInputFiles(fixture.peers);
+  if(usePeer)await page.locator('#peer-group-file').setInputFiles(fixture.peers);
   await page.locator('#validate-supply').click();
   await page.locator('#supply-validation-status.success').waitFor();
   assert.equal(await page.locator('#supply-summary-date').innerText(),fixture.snapshot.date);
@@ -437,7 +468,7 @@ async function runValidSupplyUpload(browser,base,width,fixture,usePeer=true){
 async function runInvalidSupplyUpload(browser,base,fixture,expected,currentSnapshot){
   const {context,page,requests}=await openUploader(browser,base,currentSnapshot.date,1440,'2026-09-15',40,false,currentSnapshot);
   await page.locator('#supply-file').setInputFiles(fixture.workbook);
-  await page.locator('#supply-peer-file').setInputFiles(fixture.peers);
+  await page.locator('#peer-group-file').setInputFiles(fixture.peers);
   await page.locator('#validate-supply').click();
   await page.locator('#supply-validation-status.error').waitFor();
   assert.match(await page.locator('#supply-validation-status').innerText(),expected);
@@ -479,14 +510,15 @@ async function runInvalidUpload(browser,base,files,expected,currentDate) {
 }
 
 function luacFixture(root,variant,date,count=40){
-  const output=join(root,`luac-${variant}-${count}.xlsx`);
-  execFileSync('python3',['tests/make_luac_fixture.py','--out',output,'--variant',variant,'--date',date,'--count',String(count)],{stdio:'pipe'});
-  return output;
+  const base=join(root,`luac-${variant}-${count}-${date}`);
+  execFileSync('python3',['tests/make_luac_fixture.py','--out',`${base}.xlsx`,'--peers-out',`${base}-peers.xlsx`,'--variant',variant,'--date',date,'--count',String(count)],{stdio:'pipe'});
+  return {workbook:`${base}.xlsx`,peers:`${base}-peers.xlsx`};
 }
 
-async function runValidLuacUpload(browser,base,width,file,expectedDate,currentDate,bql=false){
+async function runValidLuacUpload(browser,base,width,fixture,expectedDate,currentDate,bql=false){
   const {context,page,requests}=await openUploader(browser,base,expectedDate,width,currentDate);
-  await page.locator('#luac-file').setInputFiles(file);
+  await page.locator('#luac-file').setInputFiles(fixture.workbook);
+  await page.locator('#peer-group-file').setInputFiles(fixture.peers);
   await page.locator('#validate-luac').click();
   await page.locator('#luac-validation-status.success').waitFor();
   assert.equal(await page.locator('#luac-summary-date').innerText(),expectedDate);
@@ -502,14 +534,30 @@ async function runValidLuacUpload(browser,base,width,file,expectedDate,currentDa
   assert.deepEqual(Object.keys(JSON.parse(publish.body)),['data']);
   assert.equal(/\.xlsx|source_file|sha256|\/Users\//i.test(publish.body),false);
   assert.equal(JSON.parse(publish.body).data.date,expectedDate);
-  const python=JSON.parse(execFileSync('python3',['scripts/extract_luac.py',file],{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
+  assert.deepEqual(JSON.parse(publish.body).data.peer_definitions,[{name:'Fixture Banks',tickers:['T0','T1']},{name:'Fixture Tech',tickers:['T2','T3']}]);
+  const python=JSON.parse(execFileSync('python3',['scripts/extract_luac.py',fixture.workbook,'--peers',fixture.peers],{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
   assert.deepEqual(JSON.parse(publish.body).data,python,'browser and Python LUAC extraction must match');
   await context.close();
 }
 
-async function runSameDateLuacCorrection(browser,base,file,currentDate){
+async function runInheritedPeerLuacUpload(browser,base,fixture,expectedDate,currentDate){
+  const inherited=[{name:'Published Group',tickers:['T0','T1','T2','T3']}];
+  const {context,page,requests}=await openUploader(browser,base,expectedDate,1440,currentDate,40,false,null,inherited);
+  await page.locator('#luac-file').setInputFiles(fixture.workbook);
+  await page.locator('#validate-luac').click();
+  await page.locator('#luac-validation-status.success').waitFor();
+  await page.locator('#luac-upload-password').fill('company password');
+  await page.locator('#publish-luac').click();
+  await page.locator('#luac-publish-status.success').waitFor();
+  const publish=requests.find(item=>item.url.endsWith('/publish/luac'));
+  assert.ok(publish,'LUAC upload without a peer file must reuse the published mapping');
+  assert.deepEqual(JSON.parse(publish.body).data.peer_definitions,inherited);
+  await context.close();
+}
+
+async function runSameDateLuacCorrection(browser,base,fixture,currentDate){
   const {context,page,requests}=await openUploader(browser,base,currentDate,1440,currentDate);
-  await page.locator('#luac-file').setInputFiles(file);await page.locator('#validate-luac').click();await page.locator('#luac-validation-status.success').waitFor();
+  await page.locator('#luac-file').setInputFiles(fixture.workbook);await page.locator('#peer-group-file').setInputFiles(fixture.peers);await page.locator('#validate-luac').click();await page.locator('#luac-validation-status.success').waitFor();
   assert.match(await page.locator('#luac-validation-status').innerText(),/同日更正 PR/);
   assert.equal(await page.locator('#publish-luac').isDisabled(),false);
   await page.locator('#luac-upload-password').fill('company password');
@@ -520,19 +568,20 @@ async function runSameDateLuacCorrection(browser,base,file,currentDate){
   await context.close();
 }
 
-async function runBloombergDiagnostic(browser,base,file,currentDate){
+async function runBloombergDiagnostic(browser,base,fixture,currentDate){
   const {context,page,requests,bridgeRequests}=await openUploader(browser,base,currentDate,1440,currentDate,40,true);
   await page.locator('#bloomberg-diagnostic').waitFor({state:'visible'});
-  await page.locator('#luac-file').setInputFiles(file);await page.locator('#validate-luac').click();await page.locator('#luac-validation-status.success').waitFor();await page.locator('#bql-confirm').check();
+  await page.locator('#luac-file').setInputFiles(fixture.workbook);await page.locator('#peer-group-file').setInputFiles(fixture.peers);await page.locator('#validate-luac').click();await page.locator('#luac-validation-status.success').waitFor();await page.locator('#bql-confirm').check();
   await page.locator('#probe-bloomberg').click();await page.locator('#bloomberg-status.success').waitFor();
   const probe=bridgeRequests.find(item=>item.url.endsWith('/probe'));assert.ok(probe);assert.deepEqual(Object.keys(JSON.parse(probe.body)),['data']);assert.equal(/\.xlsx|source_file|sha256|\/Users\//i.test(probe.body),false);
   assert.equal(requests.some(item=>item.url.endsWith('/publish/luac')),false,'diagnostic must not call the Worker publish endpoint');
   await context.close();
 }
 
-async function runInvalidLuacUpload(browser,base,file,expected,currentDate,currentCount=40){
+async function runInvalidLuacUpload(browser,base,fixture,expected,currentDate,currentCount=40){
   const {context,page,requests}=await openUploader(browser,base,'2026-09-16',1440,currentDate,currentCount);
-  await page.locator('#luac-file').setInputFiles(file);
+  await page.locator('#luac-file').setInputFiles(fixture.workbook);
+  await page.locator('#peer-group-file').setInputFiles(fixture.peers);
   await page.locator('#validate-luac').click();
   await page.locator('#luac-validation-status.error').waitFor();
   assert.match(await page.locator('#luac-validation-status').innerText(),expected);
@@ -576,6 +625,7 @@ if(require.main===module) (async()=>{
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'mismatch',expectedLuacDate),/ID 必須完整一致/,currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'mixed-date',expectedLuacDate),/資料日期不一致/,currentLuacDate);
     await runSameDateLuacCorrection(browser,base,luacFixture(temporary,'valid',currentLuacDate),currentLuacDate);
+    await runInheritedPeerLuacUpload(browser,base,luacFixture(temporary,'valid',currentLuacDate),currentLuacDate,currentLuacDate);
     await runBloombergDiagnostic(browser,base,luacFixture(temporary,'bql',currentLuacDate),currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'valid',expectedLuacDate,25),/超過 ±20%/,currentLuacDate);
     const supplyValid=supplyFixture(temporary);

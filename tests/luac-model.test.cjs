@@ -72,8 +72,24 @@ test('filtered curves allow five samples and annotate missing tenor bands', () =
 test('public contract rejects impossible dates and incorrect quality flags', () => {
   const columns=model.COLUMNS;
   const row=['ID','Bond','Issuer','TK','2030-02-28','A',4,100,5,'Industry',[]];
-  const data={schema_version:1,date:'2026-09-15',columns,records:[row]};
-  assert.equal(model.validateSnapshot(data).length,1);
+  const definitions=[{name:'Banks',tickers:['TK']},{name:'Tech',tickers:['T2']}];
+  const data={schema_version:2,date:'2026-09-15',columns,peer_definitions:definitions,records:[row]};
+  const bonds=model.validateSnapshot(data);
+  assert.equal(bonds.length,1);
+  assert.equal(bonds[0].peer_group,'Banks');
   assert.throws(()=>model.validateSnapshot({...data,date:'2026-02-31'}),/結構不正確/);
   assert.throws(()=>model.validateSnapshot({...data,records:[[...row.slice(0,10),['yield_outlier']]]}),/數值無效/);
+});
+
+test('unmapped tickers stay ungrouped and legacy schema is rejected', () => {
+  const columns=model.COLUMNS;
+  const rows=[['ID','Bond','Issuer','TK','2030-02-28','A',4,100,5,'Industry',[]],['ID2','Bond','Issuer','ZZ','2031-02-28','A',5,110,6,'Industry',[]]];
+  const data={schema_version:2,date:'2026-09-15',columns,peer_definitions:[{name:'Banks',tickers:['TK']}],records:rows};
+  const bonds=model.validateSnapshot(data);
+  assert.deepEqual(bonds.map(bond=>bond.peer_group),['Banks','']);
+  const legacy={schema_version:1,date:'2026-09-15',columns,records:rows};
+  assert.throws(()=>model.validateSnapshot(legacy),/結構不正確/);
+  assert.throws(()=>model.validateSnapshot({...data,peer_definitions:[]}),/Peer Group/);
+  assert.throws(()=>model.validateSnapshot({...data,peer_definitions:[{name:'A',tickers:['TK']},{name:'B',tickers:['TK']}]}),/重複/);
+  assert.throws(()=>model.validateSnapshot({...data,peer_definitions:[{name:'A',tickers:['tk']}]}),/無效/);
 });

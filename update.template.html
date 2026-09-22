@@ -43,6 +43,12 @@
       <div id="publish-status" class="status neutral" role="status" aria-live="polite">尚未送出。</div>
     </section>
 
+    <section class="upload-card peer-upload" aria-labelledby="peer-title">
+      <p class="upload-kicker">PEER GROUP MAPPING</p>
+      <div class="section-heading"><div><h2 id="peer-title">Peer Group Excel</h2><p>選填；單券相對價值與 IG Supply 共用同一份 TICKER／Peer Group mapping。未選取時，各自沿用正式站現行設定。</p></div><button id="clear-peer" class="button secondary" type="button">清除</button></div>
+      <label class="file-slot"><strong>Peer Group Excel</strong><span>選填；兩份資料共用</span><input id="peer-group-file" type="file" accept=".xlsx"><output id="peer-group-file-name">沿用現行 mapping</output></label>
+    </section>
+
     <section class="upload-card luac-upload" aria-labelledby="luac-title">
       <p class="upload-kicker">LUAC VALUE WORKBOOK</p>
       <div class="section-heading"><div><h2 id="luac-title">單券相對價值資料</h2><p>可選取純值 Excel，或包含一個 BQL 公式且已完成更新、儲存快取值的 Excel。系統只傳送精簡後的公開資料。</p></div><button id="clear-luac" class="button secondary" type="button">清除</button></div>
@@ -59,11 +65,8 @@
 
     <section class="upload-card supply-upload" aria-labelledby="supply-upload-title">
       <p class="upload-kicker">IG PRIMARY SUPPLY WORKBOOK</p>
-      <div class="section-heading"><div><h2 id="supply-upload-title">IG Supply 資料</h2><p>選取 Supply Excel；Peer Group Excel 可選，未選時沿用正式站現行 mapping。原始列不會上傳。</p></div><button id="clear-supply" class="button secondary" type="button">清除</button></div>
-      <div class="file-grid">
-        <label class="file-slot"><strong>Supply Excel</strong><span>必填</span><input id="supply-file" type="file" accept=".xlsx"><output id="supply-file-name">尚未選取</output></label>
-        <label class="file-slot"><strong>Peer Group Excel</strong><span>選填</span><input id="supply-peer-file" type="file" accept=".xlsx"><output id="supply-peer-file-name">沿用現行 mapping</output></label>
-      </div>
+      <div class="section-heading"><div><h2 id="supply-upload-title">IG Supply 資料</h2><p>選取 Supply Excel；Peer Group 使用上方共用的 mapping，未選時沿用正式站現行 mapping。原始列不會上傳。</p></div><button id="clear-supply" class="button secondary" type="button">清除</button></div>
+      <label class="file-slot"><strong>Supply Excel</strong><span>必填</span><input id="supply-file" type="file" accept=".xlsx"><output id="supply-file-name">尚未選取</output></label>
       <div class="actions"><button id="validate-supply" class="button primary" type="button">在本機驗證</button></div>
       <div id="supply-validation-status" class="status neutral" role="status" aria-live="polite">等待選取 Supply Excel。</div>
       <dl id="supply-validation-summary" class="summary" hidden><div><dt>資料截止日</dt><dd id="supply-summary-date"></dd></div><div><dt>發行記錄</dt><dd id="supply-summary-count"></dd></div><div><dt>YTD</dt><dd id="supply-summary-ytd"></dd></div><div><dt>日期校正</dt><dd id="supply-summary-corrections"></dd></div><div><dt>重複 CUSIP 群組</dt><dd id="supply-summary-duplicates"></dd></div></dl>

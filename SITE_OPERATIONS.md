@@ -34,10 +34,11 @@
 
 ### LUAC 單券資料
 
-正式來源必須是單一工作表、固定 11 欄、BICS Level 1 產業、靜態與行情雙區塊的 `.xlsx`。允許無公式純值檔，或恰好一個 BQL 公式且已完成更新、儲存快取值的檔案；其他公式、缺失快取、缺值、非有限數字、重複或不匹配 ID、或混合資料日都拒絕整批更新。瀏覽器無法重新計算 BQL，發布前必須由使用者確認已在 Excel 更新完成並儲存。以下命令只輸出精簡公開 contract，私人 audit 必須在 repo 外：
+正式來源必須是單一工作表、固定 11 欄、BICS Level 1 產業、靜態與行情雙區塊的 `.xlsx`。允許無公式純值檔，或恰好一個 BQL 公式且已完成更新、儲存快取值的檔案；其他公式、缺失快取、缺值、非有限數字、重複或不匹配 ID、或混合資料日都拒絕整批更新。瀏覽器無法重新計算 BQL，發布前必須由使用者確認已在 Excel 更新完成並儲存。公開 schema v2 另含 `peer_definitions`（TICKER 對應 Peer Group），`columns` 與每筆記錄仍為 11 欄；`bonds.html` 的第二層篩選可在產業與 Peer Group 之間切換，Peer Group 模式只顯示已分類債券。Peer mapping 是含 `TICKER` 與 `Peer Group` 兩欄的選填 Excel（與 Supply 共用同一份）；網頁未提供時沿用目前公開快照內的 mapping。以下命令只輸出精簡公開 contract，私人 audit 必須在 repo 外：
 
 ```sh
 python3 scripts/extract_luac.py <LUAC.xlsx> \
+  --peers <Peer-Groups.xlsx> \
   --output assets/luac-bonds.json \
   --audit <repo之外>/luac-audit.json
 ```
@@ -115,7 +116,7 @@ python3 scripts/validate_fast_data.py \
 
 快速驗證要求資料結構與分類完整、460 個有限數值無缺值、Excel 來源、percentile 範圍、Min／Median／Max 排序、新日期，以及公開 JSON、頁面日期與 manifest 相符。Excel 原檔的四份工作簿、工作表與 92 個內嵌日期仍由瀏覽器及 Worker 驗證。
 
-可信任的 LUAC 自動資料 PR 若只修改 `assets/luac-bonds.json`，同樣走輕量資料驗證：嚴格檢查 schema、11 欄、缺值、非有限數字、重複 ID、品質旗標、0Y–50Y 圖表可用資料、日期遞增、±20% 筆數、4 MiB 上限，以及建置後 asset、頁面日期與 manifest 一致。資料-only 更新不重跑 Playwright、LOWESS 模型與 Worker 單元測試；任何程式或第二個檔案的變更仍跑完整 CI。
+可信任的 LUAC 自動資料 PR 若只修改 `assets/luac-bonds.json`，同樣走輕量資料驗證：嚴格檢查 schema、11 欄、`peer_definitions`、缺值、非有限數字、重複 ID、品質旗標、0Y–50Y 圖表可用資料、日期遞增、±20% 筆數、4 MiB 上限，以及建置後 asset、頁面日期與 manifest 一致。資料-only 更新不重跑 Playwright、LOWESS 模型與 Worker 單元測試；任何程式或第二個檔案的變更仍跑完整 CI。
 
 可信任的 Supply 自動資料 PR 若只修改 `assets/supply-data.json`，會執行 `scripts/validate_fast_supply.py`，檢查 compact schema、精確加總、Rating／Tenor／Peer 順序、12 個月 reconciliation、日期不得倒退、筆數與 YTD ±20%、256 KiB 上限，以及建置後 asset、Supply 頁日期與 `datasets.supply` 一致。同日更正可通過。
 
@@ -149,7 +150,7 @@ pnpm run test:browser -- http://127.0.0.1:8766/
 2. 必須從公司電腦開啟 `/health` 並看到 `RV Upload Service OK`；若遭阻擋，立即停止，網站維持原狀。
 3. 設定 preview Worker 的 encrypted secrets：`UPLOAD_PASSWORD`、`SESSION_SECRET`、`GITHUB_APP_ID`、`GITHUB_APP_INSTALLATION_ID`、`GITHUB_APP_PRIVATE_KEY`。GitHub App 只安裝在 `rv-dashboard`。
 4. 以合成資料完成登入、PR、CI 測試；網站端 `assets/upload-config.json` 的 `enabled` 仍保持 `false`。
-5. 用當期四份 Excel 比較瀏覽器結果與 `extract_excel_strict.py` 結果一致。
+5. 用當期四份 Excel 比較瀏覽器結果與 `extract_excel_strict.py` 結果一致；LUAC 另需以當期 Peer Group Excel 或正式站現行 mapping 與 `extract_luac.py --peers` 的結果一致。
 6. 最後才把需要啟用的 Worker `RV_UPLOAD_ENABLED`／`LUAC_UPLOAD_ENABLED`／`SUPPLY_UPLOAD_ENABLED` 與網站對應 config 都切成 `true`，並經 PR 發布。
 
 失敗時依範圍回復：

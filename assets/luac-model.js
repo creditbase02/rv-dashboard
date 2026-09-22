@@ -6,6 +6,8 @@
   'use strict';
 
   const COLUMNS = ['id','security_des','issuer','ticker','maturity','rating','maturity_years','oas_bp','yield_pct','industry','flags'];
+  const SCHEMA_VERSION = 2;
+  const PEER_DEFINITION_KEYS = ['name','tickers'];
   const BANDS = ['AAA','AA','A','BBB','BB','NR'];
   const CURVE_ANCHORS = [
     {label:'5Y',center:5,tolerance:1},
@@ -30,10 +32,32 @@
     return 'NR';
   }
 
-  function rowToBond(row) {
+  function peerTickerMap(definitions) {
+    if (!Array.isArray(definitions) || !definitions.length) throw new Error('LUAC Peer Group 定義無效');
+    const groups = new Map(), tickers = new Set();
+    for (const definition of definitions) {
+      if (!definition || Object.keys(definition).length !== PEER_DEFINITION_KEYS.length || !PEER_DEFINITION_KEYS.every(key => Object.hasOwn(definition, key))) throw new Error('LUAC Peer Group 定義無效');
+      const name = definition.name, members = definition.tickers;
+      if (typeof name !== 'string' || !name.trim() || name.length > 160 || groups.has(name)) throw new Error('LUAC Peer Group 名稱無效');
+      if (!Array.isArray(members) || !members.length) throw new Error('LUAC Peer Group 成員無效');
+      const accepted = [];
+      for (const ticker of members) {
+        if (typeof ticker !== 'string' || !ticker || ticker !== ticker.trim().toUpperCase() || ticker.length > 32) throw new Error('LUAC Peer Group 成員無效');
+        if (tickers.has(ticker)) throw new Error(`LUAC Peer Group ticker 重複：${ticker}`);
+        tickers.add(ticker); accepted.push(ticker);
+      }
+      groups.set(name, accepted);
+    }
+    const map = new Map();
+    for (const [name, members] of groups) for (const ticker of members) map.set(ticker, name);
+    return map;
+  }
+
+  function rowToBond(row, peerGroups) {
     const result = {};
     COLUMNS.forEach((name, index) => { result[name] = row[index]; });
     result.band = ratingBand(result.rating);
+    result.peer_group = peerGroups?.get(result.ticker) || '';
     return result;
   }
 
@@ -46,13 +70,14 @@
   }
 
   function validateSnapshot(data) {
-    if (!data || Object.keys(data).length !== 4 || !['schema_version','date','columns','records'].every(key=>Object.hasOwn(data,key)) || data.schema_version !== 1 || JSON.stringify(data.columns) !== JSON.stringify(COLUMNS) || !validDate(data.date) || !Array.isArray(data.records) || data.records.length<1 || data.records.length>20000) {
+    if (!data || Object.keys(data).length !== 5 || !['schema_version','date','columns','peer_definitions','records'].every(key=>Object.hasOwn(data,key)) || data.schema_version !== SCHEMA_VERSION || JSON.stringify(data.columns) !== JSON.stringify(COLUMNS) || !validDate(data.date) || !Array.isArray(data.records) || data.records.length<1 || data.records.length>20000) {
       throw new Error('LUAC 公開資料結構不正確');
     }
+    const peerGroups = peerTickerMap(data.peer_definitions);
     const ids = new Set();
     const bonds = data.records.map((row, index) => {
       if (!Array.isArray(row) || row.length !== COLUMNS.length) throw new Error(`LUAC 第 ${index + 1} 筆欄位不完整`);
-      const bond = rowToBond(row);
+      const bond = rowToBond(row, peerGroups);
       if (ids.has(bond.id)) throw new Error(`LUAC ID 重複：${bond.id}`);
       ids.add(bond.id);
       const textLimits={id:64,security_des:180,issuer:300,ticker:32,maturity:10,rating:16,industry:160};
@@ -159,5 +184,5 @@
     return {curves,fitted,eligibility};
   }
 
-  return {BANDS,COLUMNS,CURVE_ANCHORS,buildCurves,curveEligibility,finite,fitLowess,lowess,qualityFlags,ratingBand,rowToBond,validateSnapshot};
+  return {BANDS,COLUMNS,CURVE_ANCHORS,SCHEMA_VERSION,buildCurves,curveEligibility,finite,fitLowess,lowess,peerTickerMap,qualityFlags,ratingBand,rowToBond,validateSnapshot};
 });

@@ -5,7 +5,10 @@ from __future__ import annotations
 import math
 from datetime import date
 
+from peer_data import peer_group_map, validate_peer_definitions
 
+
+SCHEMA_VERSION = 2
 COLUMNS = (
     "id",
     "security_des",
@@ -19,6 +22,7 @@ COLUMNS = (
     "industry",
     "flags",
 )
+SNAPSHOT_FIELDS = {"schema_version", "date", "columns", "peer_definitions", "records"}
 FLAG_VALUES = ("yield_outlier", "maturity_outlier", "oas_outlier")
 MAX_RECORDS = 20_000
 MAX_PUBLISH_BYTES = 4 * 1024 * 1024
@@ -49,11 +53,12 @@ def rating_band(rating: str) -> str:
 
 
 def validate_luac(data: dict) -> tuple[int, int]:
-    if not isinstance(data, dict) or set(data) != {"schema_version", "date", "columns", "records"}:
+    if not isinstance(data, dict) or set(data) != SNAPSHOT_FIELDS:
         raise ValueError("Unexpected LUAC snapshot fields")
-    if data["schema_version"] != 1 or data["columns"] != list(COLUMNS):
+    if data["schema_version"] != SCHEMA_VERSION or data["columns"] != list(COLUMNS):
         raise ValueError("Unexpected LUAC schema")
     date.fromisoformat(data["date"])
+    validate_peer_definitions(data["peer_definitions"])
     records = data["records"]
     if not isinstance(records, list) or not 1 <= len(records) <= MAX_RECORDS:
         raise ValueError("LUAC record count is out of range")
@@ -79,6 +84,11 @@ def validate_luac(data: dict) -> tuple[int, int]:
             raise ValueError(f"LUAC row {index} has invalid quality flags")
         anomaly_count += bool(flags)
     return len(records), anomaly_count
+
+
+def snapshot_peer_groups(data: dict) -> dict[str, str]:
+    """Return the ticker to peer group map of a validated LUAC snapshot."""
+    return peer_group_map(data["peer_definitions"])
 
 
 def validate_count_drift(new_count: int, current_count: int) -> None:
