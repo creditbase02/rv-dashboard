@@ -12,7 +12,7 @@ python3 -m http.server 8766 --directory public
 pnpm run test:browser -- http://127.0.0.1:8766/
 ```
 
-首頁保留既有 RV 圖表；`bonds.html` 提供「單券相對價值比較表」，包括 Yield／OAS 點位、穩健 LOWESS 信評曲線、篩選與排名表，第二層篩選可在產業與 Peer Group 之間切換；`supply.html` 提供 IG Primary Supply 的 YTD／MTD、月度與 Industry／Rating／Tenor／Peer Group 分析。
+首頁保留既有 RV 圖表；`bonds.html` 提供「單券相對價值比較表」，包括 Yield／OAS 點位、穩健 LOWESS 信評曲線、篩選與排名表，第二層篩選可在產業與 Peer Group 之間切換（切換時清除另一邊的勾選）；`supply.html` 提供 IG Primary Supply 的 YTD／MTD、月度與 Industry／Rating／Tenor／Peer Group 分析。
 
 原始 Excel、PPT、PDF 與私人稽核資料不得加入 Git。公開端只保存通過嚴格驗證的 RV、LUAC 與 Supply 聚合 JSON。
 
