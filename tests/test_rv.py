@@ -51,9 +51,11 @@ class RVTests(unittest.TestCase):
         self.assertEqual(page.count('name="section"'), 3)
         self.assertIn('href="update.html"', page)
         self.assertIn('href="bonds.html"', page)
+        self.assertIn('href="supply.html"', page)
         update_page = (self.public / "update.html").read_text(encoding="utf-8")
         self.assertIn("四份 Excel", update_page)
         self.assertIn("LUAC", update_page)
+        self.assertIn("IG Supply", update_page)
         self.assertRegex(update_page, r'assets/update\.js\?v=[0-9a-f]{10}')
 
     def test_integration_manifest(self):
@@ -63,6 +65,7 @@ class RVTests(unittest.TestCase):
         self.assertEqual(manifest["content_as_of"], self.data["date"])
         self.assertEqual(manifest["datasets"]["rv"]["content_as_of"], self.data["date"])
         self.assertEqual(manifest["datasets"]["luac"]["asset"], "assets/luac-bonds.json")
+        self.assertEqual(manifest["datasets"]["supply"]["asset"], "assets/supply-data.json")
         self.assertEqual(manifest["validation_status"], "PASS")
         validate_peer({**manifest, "site_id": "ib-knowledge-base"}, "ib-knowledge-base")
 
@@ -161,6 +164,9 @@ class RVTests(unittest.TestCase):
         self.assertIn("actions: write", workflow)
         self.assertIn("scripts/ci_validation_mode.py", workflow)
         self.assertIn("scripts/validate_fast_data.py", workflow)
+        self.assertIn("scripts/validate_fast_supply.py", workflow)
+        self.assertIn("scripts/verify_supply_data_only_pr.py", workflow)
+        self.assertIn("automated-supply-data", workflow)
         self.assertIn("if: steps.validation.outputs.mode == 'full'", workflow)
         self.assertIn("if: steps.validation.outputs.mode == 'data'", workflow)
         self.assertIn('gh pr merge "$PR_URL" --auto --squash --delete-branch --match-head-commit "$HEAD_SHA"', workflow)

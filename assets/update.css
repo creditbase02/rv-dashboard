@@ -41,4 +41,8 @@ body { background:#f7f9fb; font-family:"Microsoft JhengHei","PingFang TC",sans-s
 .diagnostic-panel h3 { margin:0; font-size:16px; color:#173e5a; }
 .diagnostic-panel p { margin-bottom:10px; }
 .diagnostic-panel .summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.supply-upload { margin-top:24px; }
+.supply-upload .summary { grid-template-columns:repeat(5,minmax(0,1fr)); }
 @media(max-width:650px) { .upload-shell { padding:24px 16px 40px; } .upload-shell h1 { font-size:27px; } .upload-card { padding:16px; } .file-grid,.summary { grid-template-columns:1fr; } .section-heading { align-items:flex-start; } }
+@media(max-width:900px) { .supply-upload .summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:650px) { .supply-upload .summary { grid-template-columns:1fr; } }

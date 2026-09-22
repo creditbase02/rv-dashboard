@@ -72,8 +72,13 @@ def validate_public(output: Path) -> None:
         output / "assets" / "luac-model.js",
         output / "assets" / "bonds.js",
         output / "assets" / "bonds.css",
+        output / "assets" / "supply-data.json",
+        output / "assets" / "supply-model.js",
+        output / "assets" / "supply.js",
+        output / "assets" / "supply.css",
         output / "update.html",
         output / "bonds.html",
+        output / "supply.html",
         output / "integration-manifest.json",
     )
     for path in required:
@@ -94,25 +99,36 @@ def build() -> tuple[Path, dict]:
     validate(snapshot)
     luac = json.loads((ROOT / "assets" / "luac-bonds.json").read_text(encoding="utf-8"))
     validate_luac(luac)
+    from supply_data import validate_supply
+    supply = json.loads((ROOT / "assets" / "supply-data.json").read_text(encoding="utf-8"))
+    validate_supply(supply)
     template = (ROOT / "index.template.html").read_text(encoding="utf-8")
     page = template.replace("{{DATA_DATE_ISO}}", snapshot["date"]).replace(
         "{{DATA_DATE_DISPLAY}}", snapshot["date"].replace("-", "/")
     )
-    update_version = asset_version(ROOT / "assets" / "update.js", ROOT / "assets" / "update.css", ROOT / "assets" / "luac-model.js")
+    update_version = asset_version(
+        ROOT / "assets" / "update.js",
+        ROOT / "assets" / "update.css",
+        ROOT / "assets" / "luac-model.js",
+        ROOT / "assets" / "supply-model.js",
+    )
     update_page = (ROOT / "update.template.html").read_text(encoding="utf-8").replace("{{UPDATE_VERSION}}", update_version)
     bonds_template = (ROOT / "bonds.template.html").read_text(encoding="utf-8")
     luac_version = f"{luac['date']}-{asset_version(ROOT / 'assets' / 'luac-bonds.json', ROOT / 'assets' / 'bonds.js', ROOT / 'assets' / 'luac-model.js')}"
     bonds_page = bonds_template.replace("{{LUAC_DATE_ISO}}", luac["date"]).replace("{{LUAC_DATE_DISPLAY}}", luac["date"].replace("-", "/")).replace("{{LUAC_VERSION}}", luac_version)
+    supply_version = f"{supply['date']}-{asset_version(ROOT / 'assets' / 'supply-data.json', ROOT / 'assets' / 'supply-model.js', ROOT / 'assets' / 'supply.js', ROOT / 'assets' / 'supply.css')}"
+    supply_page = (ROOT / "supply.template.html").read_text(encoding="utf-8").replace("{{SUPPLY_DATE_ISO}}", supply["date"]).replace("{{SUPPLY_DATE_DISPLAY}}", supply["date"].replace("-", "/")).replace("{{SUPPLY_VERSION}}", supply_version)
     temporary = Path(tempfile.mkdtemp(prefix=".rv-public-", dir=ROOT))
     backup: Path | None = None
     try:
         assets = temporary / "assets"
         assets.mkdir()
-        for name in ("site.css", "rv.css", "rv.js", "bonds.css", "bonds.js", "luac-model.js", "update.css", "update.js", "upload-config.json", "rv-data.json", "luac-bonds.json"):
+        for name in ("site.css", "rv.css", "rv.js", "bonds.css", "bonds.js", "luac-model.js", "supply.css", "supply.js", "supply-model.js", "update.css", "update.js", "upload-config.json", "rv-data.json", "luac-bonds.json", "supply-data.json"):
             shutil.copy2(ROOT / "assets" / name, assets / name)
         (temporary / "index.html").write_text(page, encoding="utf-8")
         (temporary / "update.html").write_text(update_page, encoding="utf-8")
         (temporary / "bonds.html").write_text(bonds_page, encoding="utf-8")
+        (temporary / "supply.html").write_text(supply_page, encoding="utf-8")
         (temporary / ".nojekyll").write_text("", encoding="utf-8")
         manifest = {
             "schema_version": 1,
@@ -124,6 +140,7 @@ def build() -> tuple[Path, dict]:
             "datasets": {
                 "rv": {"content_as_of": snapshot["date"], "asset": "assets/rv-data.json"},
                 "luac": {"content_as_of": luac["date"], "asset": "assets/luac-bonds.json"},
+                "supply": {"content_as_of": supply["date"], "asset": "assets/supply-data.json"},
             },
             "validation_status": "PASS",
             "content_sha256": content_hash(temporary),

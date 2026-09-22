@@ -206,7 +206,66 @@ async function runBonds(browser,base,width=1440){
   return {width,bonds:data.records.length};
 }
 
-module.exports={run,runBonds};
+async function runSupply(browser,base,width=1440){
+  const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width<650});
+  const page=await context.newPage(),errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  page.on('response',response=>{if(response.status()>=400)errors.push(`${response.status()} ${response.url()}`);});
+  await page.goto(base+'supply.html');
+  await page.waitForFunction(()=>document.querySelector('#supply-status')?.textContent.includes('公開聚合快照'));
+  const data=await (await page.request.get(base+'assets/supply-data.json')).json();
+  assert.equal(await page.locator('#ytd-label').innerText(),`${data.year} YTD Issuance`);
+  assert.equal(await page.locator('#mtd-label').innerText(),`${data.year} MTD Issuance`);
+  assert.equal(await page.locator('#row-count').innerText(),data.row_count.toLocaleString('en-US'));
+  assert.match(await page.locator('#ytd-value').innerText(),/1,618\.63/);
+  assert.match(await page.locator('#mtd-value').innerText(),/129\.30/);
+  assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'industry');
+  assert.equal(await page.locator('#ytd-chart .supply-bar').count(),data.breakdowns.industry.length);
+
+  await page.locator('[name=supply-group][value=rating]').check();
+  assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'rating');
+  assert.equal(await page.locator('#ytd-chart .supply-bar').count(),data.breakdowns.rating.length);
+
+  await page.locator('[name=supply-group][value=peer_group]').check();
+  assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'peer_group');
+  const firstGroup=data.peer_definitions[0].name;
+  const firstBar=page.locator(`#ytd-chart .supply-bar[data-category="${firstGroup}"]`);
+  assert.equal(await firstBar.getAttribute('role'),'button');
+  assert.equal(await page.locator('#ytd-chart .supply-bar[data-category="Others"]').getAttribute('role'),null);
+  await firstBar.focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'ticker');
+  assert.equal(await page.locator('#ytd-chart .supply-bar').count(),data.peer_tickers[firstGroup].length);
+  assert.equal(await page.locator('#peer-back').isVisible(),true);
+  await page.locator('#peer-back').click();
+  assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'peer_group');
+
+  await page.locator('[name=monthly-group][value=peer]').check();
+  assert.equal(await page.locator('#monthly-chart').getAttribute('data-mode'),'peer');
+  assert.equal(await page.locator('#monthly-legend span').count(),data.peer_definitions.length+1);
+  assert.equal(await page.locator('#monthly-chart text.bar-label').count(),12);
+
+  assert.equal(await page.locator('.breakdown-card').count(),3);
+  for(let index=0;index<3;index++){
+    const card=page.locator('.breakdown-card').nth(index);
+    assert.equal((await card.locator('tfoot td').nth(1).innerText()).replace(/,/g,''),(data.ytd_usd/1e9).toFixed(2));
+    assert.equal(await card.locator('tfoot td').nth(2).innerText(),'100.00%');
+    const displayed=(await card.locator('tbody td:nth-child(3)').allInnerTexts()).reduce((sum,value)=>sum+Number(value.replace('%','')),0);
+    assert.equal(displayed.toFixed(2),'100.00');
+  }
+  const keyboardBar=page.locator('#monthly-chart .supply-bar').filter({has:page.locator('xpath=.')}).first();
+  await keyboardBar.focus();
+  assert.equal(await page.locator('#supply-tooltip').isVisible(),true);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#supply-tooltip').isHidden(),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/supply overflow`);
+  assert.deepEqual(errors,[]);
+  await context.close();
+  return {width,supplyRows:data.row_count};
+}
+
+module.exports={run,runBonds,runSupply};
 
 const FILES = {
   Spread:'2Y Percentile RV.xlsx',
@@ -221,18 +280,22 @@ function fixtures(root,variant,date) {
   return Object.fromEntries(Object.entries(FILES).map(([metric,name])=>[metric,join(output,name)]));
 }
 
-async function openUploader(browser,base,expectedDate,width=1440,currentLuacDate='2026-09-15',currentLuacCount=40,bridge=false) {
+async function openUploader(browser,base,expectedDate,width=1440,currentLuacDate='2026-09-15',currentLuacCount=40,bridge=false,currentSupply=null) {
   const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width<650});
   const page=await context.newPage();
   const requests=[],bridgeRequests=[];
-  await page.route('**/assets/upload-config.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({enabled:true,luac_enabled:true,api_url:'https://rv-upload-service.example.workers.dev'})}));
+  const supplySnapshot=currentSupply||JSON.parse(readFileSync('assets/supply-data.json','utf8'));
+  await page.route('**/assets/upload-config.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({enabled:true,luac_enabled:true,supply_enabled:true,api_url:'https://rv-upload-service.example.workers.dev'})}));
   await page.route('**/assets/luac-bonds.json*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({date:currentLuacDate,records:Array.from({length:currentLuacCount},()=>[])})}));
+  await page.route('**/assets/supply-data.json*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify(supplySnapshot)}));
   await page.route('https://rv-upload-service.example.workers.dev/**',async route=>{
     const request=route.request();
     requests.push({url:request.url(),method:request.method(),body:request.postData()});
     if(request.url().endsWith('/session')) return route.fulfill({contentType:'application/json',body:JSON.stringify({token:'test-session',expires_in:900})});
+    if(request.url().endsWith('/publish/supply')) return route.fulfill({status:202,contentType:'application/json',body:JSON.stringify({id:'44',state:'pending'})});
     if(request.url().endsWith('/publish/luac')) return route.fulfill({status:202,contentType:'application/json',body:JSON.stringify({id:'43',state:'pending'})});
     if(request.url().endsWith('/publish')) return route.fulfill({status:202,contentType:'application/json',body:JSON.stringify({id:'42',state:'pending'})});
+    if(request.url().endsWith('/status/supply/44')) return route.fulfill({contentType:'application/json',body:JSON.stringify({state:'deployed',message:`發布完成：${expectedDate}，正式站驗證 PASS。`})});
     if(request.url().endsWith('/status/luac/43')) return route.fulfill({contentType:'application/json',body:JSON.stringify({state:'deployed',message:`發布完成：${expectedDate}，正式站驗證 PASS。`})});
     if(request.url().endsWith('/status/42')) return route.fulfill({contentType:'application/json',body:JSON.stringify({state:'deployed',message:`發布完成：${expectedDate}，正式站驗證 PASS。`})});
     if(request.url().endsWith('/health')) return route.fulfill({contentType:'text/plain',body:'RV Upload Service OK'});
@@ -242,6 +305,48 @@ async function openUploader(browser,base,expectedDate,width=1440,currentLuacDate
   await page.goto(base+`update.html${bridge?'#bbg-token='+'b'.repeat(64):''}`);
   await page.waitForFunction(()=>document.querySelector('#service-state')?.textContent.includes('已啟用'));
   return {context,page,requests,bridgeRequests};
+}
+
+function supplyFixture(root,variant='valid'){
+  const output=join(root,`supply-${variant}`);
+  execFileSync('python3',['tests/make_supply_fixture.py','--out',output,'--variant',variant],{stdio:'pipe'});
+  const workbook=join(output,'supply.xlsx'),peers=join(output,'peers.xlsx');
+  const snapshot=variant==='valid'?JSON.parse(execFileSync('python3',['scripts/extract_supply.py',workbook,'--peers',peers],{encoding:'utf8',stdio:['ignore','pipe','pipe']})):null;
+  return {workbook,peers,snapshot};
+}
+
+async function runValidSupplyUpload(browser,base,width,fixture,usePeer=true){
+  const {context,page,requests}=await openUploader(browser,base,fixture.snapshot.date,width,'2026-09-15',40,false,fixture.snapshot);
+  await page.locator('#supply-file').setInputFiles(fixture.workbook);
+  if(usePeer)await page.locator('#supply-peer-file').setInputFiles(fixture.peers);
+  await page.locator('#validate-supply').click();
+  await page.locator('#supply-validation-status.success').waitFor();
+  assert.equal(await page.locator('#supply-summary-date').innerText(),fixture.snapshot.date);
+  assert.equal(await page.locator('#supply-summary-count').innerText(),String(fixture.snapshot.row_count));
+  assert.equal(await page.locator('#supply-summary-corrections').innerText(),'5');
+  assert.equal(await page.locator('#supply-summary-duplicates').innerText(),'1');
+  assert.match(await page.locator('#supply-file-name').innerText(),/已從程式狀態釋放/);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/supply uploader overflow`);
+  await page.locator('#supply-upload-password').fill('company password');
+  await page.locator('#publish-supply').click();
+  await page.locator('#supply-publish-status.success').waitFor();
+  const publish=requests.find(item=>item.url.endsWith('/publish/supply'));
+  assert.ok(publish,'sanitized Supply publish request was sent');
+  assert.deepEqual(Object.keys(JSON.parse(publish.body)),['data']);
+  assert.equal(/\.xlsx|source_file|sha256|\/Users\//i.test(publish.body),false);
+  assert.deepEqual(JSON.parse(publish.body).data,fixture.snapshot,'browser and Python Supply extraction must match');
+  await context.close();
+}
+
+async function runInvalidSupplyUpload(browser,base,fixture,expected,currentSnapshot){
+  const {context,page,requests}=await openUploader(browser,base,currentSnapshot.date,1440,'2026-09-15',40,false,currentSnapshot);
+  await page.locator('#supply-file').setInputFiles(fixture.workbook);
+  await page.locator('#supply-peer-file').setInputFiles(fixture.peers);
+  await page.locator('#validate-supply').click();
+  await page.locator('#supply-validation-status.error').waitFor();
+  assert.match(await page.locator('#supply-validation-status').innerText(),expected);
+  assert.equal(requests.some(item=>item.url.endsWith('/publish/supply')),false);
+  await context.close();
 }
 
 async function selectFour(page,files) {
@@ -348,6 +453,7 @@ if(require.main===module) (async()=>{
   try {
     for(const width of [1440,768,375]) console.log(await run(browser,base,width));
     for(const width of [1440,768,375]) console.log(await runBonds(browser,base,width));
+    for(const width of [1440,768,375]) console.log(await runSupply(browser,base,width));
     const currentDate=JSON.parse(readFileSync('assets/rv-data.json','utf8')).date;
     const nextDate=new Date(`${currentDate}T00:00:00Z`);nextDate.setUTCDate(nextDate.getUTCDate()+1);
     const expectedDate=nextDate.toISOString().slice(0,10);
@@ -375,6 +481,12 @@ if(require.main===module) (async()=>{
     await runSameDateLuacCorrection(browser,base,luacFixture(temporary,'valid',currentLuacDate),currentLuacDate);
     await runBloombergDiagnostic(browser,base,luacFixture(temporary,'bql',currentLuacDate),currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'valid',expectedLuacDate,25),/超過 ±20%/,currentLuacDate);
+    const supplyValid=supplyFixture(temporary);
+    for(const width of [1440,768,375])await runValidSupplyUpload(browser,base,width,supplyValid,width!==375);
+    for(const [variant,message] of [['missing-column',/必須且只能有一個工作表/],['no-match',/沒有同 ticker/],['tie',/距離相同/],['bad-amount',/Tranche Size 無效/],['bad-tenor',/Tenor 無效/]]){
+      const invalid=supplyFixture(temporary,variant);
+      await runInvalidSupplyUpload(browser,base,invalid,message,supplyValid.snapshot);
+    }
     console.log('browser tests PASS');
   }
   finally {rmSync(temporary,{recursive:true,force:true});await browser.close();}

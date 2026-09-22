@@ -8,6 +8,7 @@ import sys
 
 DATA_PATH = "assets/rv-data.json"
 LUAC_DATA_PATH = "assets/luac-bonds.json"
+SUPPLY_DATA_PATH = "assets/supply-data.json"
 
 
 def validation_mode(
@@ -19,6 +20,7 @@ def validation_mode(
     head_ref: str = "",
     has_label: bool = False,
     has_luac_label: bool = False,
+    has_supply_label: bool = False,
     head_repo: str = "",
     repository: str = "",
 ) -> str:
@@ -31,6 +33,10 @@ def validation_mode(
         mode = "luac-data"
         trusted_branch = head_ref.startswith("automation/luac-data-")
         trusted_label = has_luac_label
+    elif changed == [SUPPLY_DATA_PATH]:
+        mode = "supply-data"
+        trusted_branch = head_ref.startswith("automation/supply-data-")
+        trusted_label = has_supply_label
     else:
         return "full"
     if event in {"push", "workflow_dispatch"}:
@@ -55,6 +61,7 @@ def main() -> int:
     parser.add_argument("--head-ref", default="")
     parser.add_argument("--has-label", action="store_true")
     parser.add_argument("--has-luac-label", action="store_true")
+    parser.add_argument("--has-supply-label", action="store_true")
     parser.add_argument("--head-repo", default="")
     parser.add_argument("--repository", default="")
     arguments = parser.parse_args()
@@ -66,6 +73,7 @@ def main() -> int:
         head_ref=arguments.head_ref,
         has_label=arguments.has_label,
         has_luac_label=arguments.has_luac_label,
+        has_supply_label=arguments.has_supply_label,
         head_repo=arguments.head_repo,
         repository=arguments.repository,
     ))

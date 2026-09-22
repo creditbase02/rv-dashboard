@@ -2,6 +2,8 @@ const METRICS = ['Spread', '10Y', '30Y', '10s30s'];
 const FIELDS = ['min', 'median', 'max', 'current', 'pct'];
 const LUAC_COLUMNS = ['id','security_des','issuer','ticker','maturity','rating','maturity_years','oas_bp','yield_pct','industry','flags'];
 const LUAC_FLAGS = ['yield_outlier','maturity_outlier','oas_outlier'];
+const SUPPLY_TENORS = ['FRN','≤5Y','>5Y–10Y','>10Y / Perpetual'];
+const SUPPLY_RATINGS = ['AAA','AA+','AA','AA-','A+','A','A-','BBB+','BBB','BBB-','BB+','BB','BB-','B+','B','B-','CCC+','CCC','CCC-','CC','C','D','NR'];
 const SECTIONS = {
   Overview: ['JULI', 'Fin', 'Non-Fin', 'AA', 'A', 'BBB'],
   Cyclical: ['US Bank', 'Yankee Bank', 'Insurance', 'M&M', 'Chemical', 'Tech', 'Auto', 'Media', 'Energy', 'Capital Good'],
@@ -144,6 +146,46 @@ export function validateLuacSnapshot(data) {
   return {count:data.records.length, anomalies};
 }
 
+function validateSupplyPairs(value, name, allowEmpty = false) {
+  if (!Array.isArray(value) || (!allowEmpty && !value.length)) throw new Error(`Supply ${name} 分類無效`);
+  const names = new Set(); let total = 0;
+  for (const row of value) {
+    if (!Array.isArray(row) || row.length !== 2 || typeof row[0] !== 'string' || !row[0].trim() || names.has(row[0]) || !Number.isSafeInteger(row[1]) || row[1] < 0) throw new Error(`Supply ${name} 列無效`);
+    names.add(row[0]); total += row[1];
+  }
+  return total;
+}
+
+export function validateSupplySnapshot(data) {
+  const fields = ['schema_version','date','year','currency','row_count','ytd_usd','mtd_usd','breakdowns','monthly','peer_definitions','peer_tickers','quality'];
+  if (!sameKeys(data, fields) || data.schema_version !== 1 || data.currency !== 'USD' || !validIsoDate(data.date) || data.year !== Number(data.date.slice(0, 4))) throw new Error('Supply 公開資料欄位不正確');
+  if (!Number.isInteger(data.row_count) || data.row_count < 1 || data.row_count > 100000 || !Number.isSafeInteger(data.ytd_usd) || data.ytd_usd <= 0 || !Number.isSafeInteger(data.mtd_usd) || data.mtd_usd < 0 || data.mtd_usd > data.ytd_usd) throw new Error('Supply 摘要數值無效');
+  if (!sameKeys(data.breakdowns, ['industry','rating','tenor','peer_group'])) throw new Error('Supply breakdown 結構不正確');
+  for (const name of ['industry','rating','tenor','peer_group']) if (validateSupplyPairs(data.breakdowns[name], name) !== data.ytd_usd) throw new Error(`Supply ${name} 無法勾稽 YTD`);
+  if (data.breakdowns.tenor.some((row, index) => row[0] !== SUPPLY_TENORS[index]) || data.breakdowns.tenor.length !== SUPPLY_TENORS.length) throw new Error('Supply Tenor 順序不正確');
+  const ratingPositions = data.breakdowns.rating.map(row => { const index = SUPPLY_RATINGS.indexOf(row[0]); return index < 0 ? SUPPLY_RATINGS.length : index; });
+  if (data.breakdowns.rating.some(row => !SUPPLY_RATINGS.includes(row[0])) || ratingPositions.some((value, index) => index && value < ratingPositions[index - 1])) throw new Error('Supply Rating 順序不正確');
+  if (!sameKeys(data.monthly, ['total','peer_groups']) || !Array.isArray(data.monthly.total) || data.monthly.total.length !== 12 || data.monthly.total.some(value => !Number.isSafeInteger(value) || value < 0) || data.monthly.total.reduce((a,b) => a + b, 0) !== data.ytd_usd) throw new Error('Supply 月度總額無效');
+  if (!Array.isArray(data.peer_definitions) || !data.peer_definitions.length) throw new Error('Supply Peer Group 定義無效');
+  const peerNames = [], tickers = new Set();
+  for (const definition of data.peer_definitions) {
+    if (!sameKeys(definition, ['name','tickers']) || typeof definition.name !== 'string' || !definition.name || definition.name === 'Others' || peerNames.includes(definition.name) || !Array.isArray(definition.tickers) || !definition.tickers.length) throw new Error('Supply Peer Group 定義無效');
+    for (const ticker of definition.tickers) { if (typeof ticker !== 'string' || !ticker || tickers.has(ticker)) throw new Error('Supply Peer ticker 無效'); tickers.add(ticker); }
+    peerNames.push(definition.name);
+  }
+  const allPeers = [...peerNames, 'Others'];
+  if (data.breakdowns.peer_group.map(row => row[0]).join('|') !== allPeers.join('|')) throw new Error('Supply Peer Group 順序不正確');
+  if (!Array.isArray(data.monthly.peer_groups) || data.monthly.peer_groups.map(row => row[0]).join('|') !== allPeers.join('|')) throw new Error('Supply Peer 月度資料無效');
+  const reconciled = Array(12).fill(0);
+  for (const row of data.monthly.peer_groups) { if (!Array.isArray(row) || row.length !== 2 || !Array.isArray(row[1]) || row[1].length !== 12 || row[1].some(value => !Number.isSafeInteger(value) || value < 0)) throw new Error('Supply Peer 月度資料無效'); row[1].forEach((value, index) => reconciled[index] += value); }
+  if (reconciled.some((value, index) => value !== data.monthly.total[index])) throw new Error('Supply Peer 月度資料無法勾稽');
+  if (!sameKeys(data.peer_tickers, peerNames)) throw new Error('Supply Peer ticker 結構不正確');
+  const peerTotals = Object.fromEntries(data.breakdowns.peer_group);
+  for (const name of peerNames) if (validateSupplyPairs(data.peer_tickers[name], name, true) !== peerTotals[name]) throw new Error(`Supply ${name} ticker 無法勾稽`);
+  if (!sameKeys(data.quality, ['date_corrections','duplicate_cusip_groups']) || Object.values(data.quality).some(value => !Number.isInteger(value) || value < 0)) throw new Error('Supply 品質統計無效');
+  return {rows:data.row_count, dateCorrections:data.quality.date_corrections, duplicateCusips:data.quality.duplicate_cusip_groups};
+}
+
 async function digestText(value) {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(value)))]
     .map(byte => byte.toString(16).padStart(2, '0')).join('');
@@ -229,7 +271,7 @@ async function addAutomationLabel(env, repo, number, token, label) {
         body: JSON.stringify({
           name: label,
           color: label.startsWith('automated-') ? '1f6feb' : 'bf8700',
-          description: label.includes('luac') ? 'Validated LUAC data-only update' : 'Validated RV data-only update',
+          description: label.includes('luac') ? 'Validated LUAC data-only update' : label.includes('supply') ? 'Validated Supply data-only update' : 'Validated RV data-only update',
         }),
       }, token);
     } catch (createError) {
@@ -252,7 +294,7 @@ async function publishData(env, data, definition) {
   definition.validate(currentData);
   if (data.date < currentData.date || (data.date === currentData.date && !definition.allowSameDate)) {
     throw new Error(definition.allowSameDate
-      ? `LUAC 資料日期 ${data.date} 不得早於正式站 ${currentData.date}`
+      ? `${definition.name} 資料日期 ${data.date} 不得早於正式站 ${currentData.date}`
       : `資料日期 ${data.date} 必須晚於正式站 ${currentData.date}`);
   }
   if (definition.checkCurrent) definition.checkCurrent(data, currentData);
@@ -320,6 +362,22 @@ export async function publishLuacSnapshot(env, data) {
   });
 }
 
+function checkSupplyDrift(data, currentData) {
+  for (const [field, label] of [['row_count', '筆數'], ['ytd_usd', 'YTD 發行量']]) {
+    const ratio = data[field] / currentData[field];
+    if (ratio < 0.8 || ratio > 1.2) throw new Error(`Supply ${label}變動超過 ±20%，請改走人工 PR`);
+  }
+}
+
+export async function publishSupplySnapshot(env, data) {
+  return publishData(env, data, {
+    name: 'Supply', path: 'assets/supply-data.json', branch: 'supply-data', compact: true,
+    productionLabel: 'automated-supply-data', previewLabel: 'supply-data-preview',
+    validate: value => validateSupplySnapshot(value), checkCurrent: checkSupplyDrift, allowSameDate: true,
+    summary: result => `Rows: ${result.rows}; date corrections: ${result.dateCorrections}; duplicate CUSIPs: ${result.duplicateCusips}`,
+  });
+}
+
 async function deploymentStatus(env, id, definition) {
   if (!/^\d+$/.test(id)) throw new Error('發布編號不正確');
   const token = await installationToken(env);
@@ -344,6 +402,10 @@ export async function status(env, id) {
 
 export async function statusLuac(env, id) {
   return deploymentStatus(env, id, {name: 'LUAC', query: 'luac_job', dataset: 'luac'});
+}
+
+export async function statusSupply(env, id) {
+  return deploymentStatus(env, id, {name: 'Supply', query: 'supply_job', dataset: 'supply'});
 }
 
 async function readJson(request, maximum = 262144) {
@@ -378,21 +440,24 @@ export async function handleRequest(request, env) {
   }
   const match = /^\/status\/(\d+)$/.exec(url.pathname);
   const luacMatch = /^\/status\/luac\/(\d+)$/.exec(url.pathname);
+  const supplyMatch = /^\/status\/supply\/(\d+)$/.exec(url.pathname);
   const rvPublish = url.pathname === '/publish' && request.method === 'POST';
   const luacPublish = url.pathname === '/publish/luac' && request.method === 'POST';
-  if (rvPublish || luacPublish || ((match || luacMatch) && request.method === 'GET')) {
+  const supplyPublish = url.pathname === '/publish/supply' && request.method === 'POST';
+  if (rvPublish || luacPublish || supplyPublish || ((match || luacMatch || supplyMatch) && request.method === 'GET')) {
     const bearer = /^Bearer (.+)$/.exec(request.headers.get('authorization') || '')?.[1];
     if (!await verifySession(bearer, env.SESSION_SECRET)) return json({error: '登入已過期，請重新輸入密碼'}, 401, cors);
     if (match) return json(await status(env, match[1]), 200, cors);
     if (luacMatch) return json(await statusLuac(env, luacMatch[1]), 200, cors);
-    if ((rvPublish && env.RV_UPLOAD_ENABLED !== 'true') || (luacPublish && env.LUAC_UPLOAD_ENABLED !== 'true')) {
+    if (supplyMatch) return json(await statusSupply(env, supplyMatch[1]), 200, cors);
+    if ((rvPublish && env.RV_UPLOAD_ENABLED !== 'true') || (luacPublish && env.LUAC_UPLOAD_ENABLED !== 'true') || (supplyPublish && env.SUPPLY_UPLOAD_ENABLED !== 'true')) {
       return json({error: '發布功能尚未啟用'}, 503, cors);
     }
     const rate = await env.PUBLISH_RATE_LIMITER.limit({key: await digestText(bearer)});
     if (!rate.success) return json({error: '發布次數過多，請一分鐘後再試'}, 429, cors);
     const body = await readJson(request, luacPublish ? 4 * 1024 * 1024 : 262144);
     if (!sameKeys(body, ['data'])) return json({error: '只接受公開摘要 data，不接受檔案或來源資訊'}, 400, cors);
-    const result = luacPublish ? await publishLuacSnapshot(env, body.data) : await publishSnapshot(env, body.data);
+    const result = luacPublish ? await publishLuacSnapshot(env, body.data) : supplyPublish ? await publishSupplySnapshot(env, body.data) : await publishSnapshot(env, body.data);
     return json(result, 202, cors);
   }
   return json({error: 'Not found'}, 404, cors);

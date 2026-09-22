@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  createSession, handleRequest, publishLuacSnapshot, publishSnapshot, status, statusLuac,
-  validateLuacSnapshot, validateSnapshot, verifySession,
+  createSession, handleRequest, publishLuacSnapshot, publishSnapshot, publishSupplySnapshot,
+  status, statusLuac, statusSupply, validateLuacSnapshot, validateSnapshot,
+  validateSupplySnapshot, verifySession,
 } from '../src/index.js';
 import worker from '../src/index.js';
 
@@ -52,6 +53,31 @@ function luacSnapshot(date = '2026-09-16', count = 25) {
       'Technology',
       index === count - 1 ? ['yield_outlier'] : [],
     ]),
+  };
+}
+
+function supplySnapshot(date = '2026-09-17', rowCount = 10, ytd = 1000) {
+  const first = Math.floor(ytd * 0.4), second = Math.floor(ytd * 0.2), others = ytd - first - second;
+  return {
+    schema_version: 1, date, year: Number(date.slice(0, 4)), currency: 'USD',
+    row_count: rowCount, ytd_usd: ytd, mtd_usd: ytd,
+    breakdowns: {
+      industry: [['Finance', ytd]],
+      rating: [['A', first], ['BBB', ytd - first]],
+      tenor: [['FRN', 0], ['≤5Y', first], ['>5Y–10Y', second], ['>10Y / Perpetual', others]],
+      peer_group: [['Group A', first], ['Group B', second], ['Others', others]],
+    },
+    monthly: {
+      total: [ytd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      peer_groups: [
+        ['Group A', [first, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+        ['Group B', [second, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+        ['Others', [others, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+      ],
+    },
+    peer_definitions: [{name: 'Group A', tickers: ['AAA']}, {name: 'Group B', tickers: ['BBB']}],
+    peer_tickers: {'Group A': [['AAA', first]], 'Group B': [['BBB', second]]},
+    quality: {date_corrections: 5, duplicate_cusip_groups: 2},
   };
 }
 
@@ -108,6 +134,16 @@ test('strict LUAC snapshot validates flags, IDs, and finite numbers', () => {
   assert.throws(() => validateLuacSnapshot({...luacSnapshot(), date: '2026-02-31'}), /日期不正確/);
 });
 
+test('strict Supply snapshot validates exact reconciliation and safe metadata', () => {
+  assert.deepEqual(validateSupplySnapshot(supplySnapshot()), {rows: 10, dateCorrections: 5, duplicateCusips: 2});
+  const broken = supplySnapshot();
+  broken.breakdowns.industry[0][1] -= 1;
+  assert.throws(() => validateSupplySnapshot(broken), /無法勾稽 YTD/);
+  const provenance = {...supplySnapshot(), source_file: 'private.xlsx'};
+  assert.throws(() => validateSupplySnapshot(provenance), /欄位不正確/);
+  assert.throws(() => validateSupplySnapshot({...supplySnapshot(), date: '2026-02-31'}), /欄位不正確/);
+});
+
 test('session tokens expire after 15 minutes and reject tampering', async () => {
   const now = Date.UTC(2026, 8, 11);
   const token = await createSession('secret', now);
@@ -159,6 +195,19 @@ test('LUAC publish is separately disabled and enforces the 4 MiB body limit', as
     method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-length': String(4 * 1024 * 1024 + 1)}, body: '{}',
   }), env({LUAC_UPLOAD_ENABLED: 'true'}));
   assert.equal(oversized.status, 413);
+});
+
+test('Supply publish is separately disabled and accepts only a data payload', async () => {
+  const token = await createSession('a-long-random-session-secret-for-tests');
+  const disabled = await handleRequest(request('/publish/supply', {
+    method: 'POST', headers: {authorization: `Bearer ${token}`}, body: JSON.stringify({data: supplySnapshot()}),
+  }), env({SUPPLY_UPLOAD_ENABLED: 'false'}));
+  assert.equal(disabled.status, 503);
+  const raw = await handleRequest(request('/publish/supply', {
+    method: 'POST', headers: {authorization: `Bearer ${token}`}, body: JSON.stringify({data: supplySnapshot(), filename: 'private.xlsx'}),
+  }), env({SUPPLY_UPLOAD_ENABLED: 'true'}));
+  assert.equal(raw.status, 400);
+  assert.match((await raw.json()).error, /只接受公開摘要/);
 });
 
 async function githubEnv(overrides = {}) {
@@ -299,6 +348,46 @@ test('production LUAC publish allows a same-day correction and writes exactly on
   } finally { globalThis.fetch = savedFetch; }
 });
 
+test('production Supply publish allows same-day correction and writes one compact asset', async () => {
+  const savedFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    calls.push({url: String(url), method, body: options.body});
+    if (String(url).endsWith('/access_tokens')) return apiJson({token: 'installation'});
+    if (String(url).includes('/contents/assets/supply-data.json') && method === 'GET') return apiJson({sha: 'supply-file-sha', content: Buffer.from(JSON.stringify(supplySnapshot())).toString('base64')});
+    if (String(url).endsWith('/git/ref/heads/main')) return apiJson({object: {sha: 'base-sha'}});
+    if (String(url).endsWith('/git/refs') && method === 'POST') return apiJson({ref: 'created'});
+    if (String(url).includes('/contents/assets/supply-data.json') && method === 'PUT') return apiJson({content: {sha: 'new-supply-file'}});
+    if (String(url).endsWith('/pulls') && method === 'POST') return apiJson({number: 82});
+    if (String(url).endsWith('/issues/82/labels') && method === 'POST') return apiJson([{name: 'automated-supply-data'}]);
+    throw new Error(`Unexpected URL ${url}`);
+  };
+  try {
+    assert.deepEqual(await publishSupplySnapshot(await githubEnv({PUBLISH_MODE: 'production', SUPPLY_UPLOAD_ENABLED: 'true'}), supplySnapshot()), {id: '82', state: 'pending'});
+    const updates = calls.filter(call => call.method === 'PUT');
+    assert.equal(updates.length, 1);
+    assert.match(updates[0].url, /assets\/supply-data\.json$/);
+    const update = JSON.parse(updates[0].body);
+    assert.match(update.branch, /^automation\/supply-data-/);
+    assert.equal(JSON.parse(Buffer.from(update.content, 'base64').toString()).row_count, 10);
+    assert.deepEqual(JSON.parse(calls.find(call => call.url.endsWith('/issues/82/labels')).body), {labels: ['automated-supply-data']});
+  } finally { globalThis.fetch = savedFetch; }
+});
+
+test('Supply publish rejects row or YTD drift above 20 percent', async () => {
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith('/access_tokens')) return apiJson({token: 'installation'});
+    if (String(url).includes('/contents/assets/supply-data.json')) return apiJson({sha: 'supply-file-sha', content: Buffer.from(JSON.stringify(supplySnapshot())).toString('base64')});
+    throw new Error(`Unexpected URL ${url}`);
+  };
+  try {
+    await assert.rejects(publishSupplySnapshot(await githubEnv({PUBLISH_MODE: 'production'}), supplySnapshot('2026-09-18', 13, 1000)), /20%/);
+    await assert.rejects(publishSupplySnapshot(await githubEnv({PUBLISH_MODE: 'production'}), supplySnapshot('2026-09-18', 10, 1300)), /20%/);
+  } finally { globalThis.fetch = savedFetch; }
+});
+
 test('LUAC publish rejects record-count drift above 20 percent', async () => {
   const savedFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
@@ -337,6 +426,20 @@ test('LUAC status reads the additive manifest dataset date', async () => {
   };
   try {
     const result = await statusLuac({...await githubEnv(), PUBLIC_MANIFEST_URL: 'https://public.example/manifest.json'}, '81');
+    assert.equal(result.state, 'deployed');
+  } finally { globalThis.fetch = savedFetch; }
+});
+
+test('Supply status reads its additive manifest dataset date', async () => {
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith('/access_tokens')) return apiJson({token: 'installation'});
+    if (String(url).endsWith('/pulls/82')) return apiJson({state: 'closed', merged_at: '2026-09-17T00:00:00Z', merge_commit_sha: 'supply-merge', title: 'Update Supply data to 2026-09-17'});
+    if (String(url).startsWith('https://public.example/manifest.json')) return apiJson({validation_status: 'PASS', commit_sha: 'supply-merge', datasets: {supply: {content_as_of: '2026-09-17'}}});
+    throw new Error(`Unexpected URL ${url}`);
+  };
+  try {
+    const result = await statusSupply({...await githubEnv(), PUBLIC_MANIFEST_URL: 'https://public.example/manifest.json'}, '82');
     assert.equal(result.state, 'deployed');
   } finally { globalThis.fetch = savedFetch; }
 });
