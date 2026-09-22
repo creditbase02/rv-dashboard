@@ -127,6 +127,11 @@ async function runBonds(browser,base,width=1440){
     const expectedPeerVisible=mappedRecords.filter(inBands).length,unmapped=data.records.length-mappedRecords.length;
     await page.locator('[name=industry-dimension][value=peer_group]').check();
     assert.equal(await page.locator('#industry-filter-title').innerText(),'Peer Group');
+    assert.equal(await page.locator('#point-group').inputValue(),'ticker','Peer Group mode must default the point colours to Ticker');
+    assert.equal(await page.locator('#curve-group').inputValue(),'peer_group','Peer Group mode must default the curve classification to Peer Group');
+    assert.match(await page.locator('#grouping-notice').innerText(),/點位顏色預設為 Ticker、曲線分類預設為 Peer Group/);
+    assert.match(await page.locator('#curve-legend').innerText(),/點位顏色｜Ticker/);
+    assert.match(await page.locator('#curve-legend').innerText(),/回歸曲線｜Peer Group/);
     assert.deepEqual((await page.locator('#industry-filter input').evaluateAll(inputs=>inputs.map(input=>input.value))).sort(),data.peer_definitions.map(definition=>definition.name).sort());
     const peerStatus=await page.locator('#bond-status').innerText();
     assert.ok(peerStatus.includes(`顯示 ${expectedPeerVisible.toLocaleString('en-US')} 檔`),peerStatus);
@@ -140,7 +145,22 @@ async function runBonds(browser,base,width=1440){
     assert.equal(peerRows.length,Math.min(50,mappedRecords.filter(record=>peerTickers.has(record[3])&&inBands(record)).length));
     await page.locator('#point-group').selectOption('peer_group');
     assert.equal(await page.locator('#point-group').inputValue(),'peer_group');
-    assert.match(await page.locator('#curve-legend').innerText(),/點位顏色｜Peer Group/);
+    assert.match(await page.locator('#curve-legend').innerText(),/點位顏色與回歸曲線｜Peer Group/);
+    assert.equal(await page.locator('#industry-filter-title').innerText(),'Peer Group','selecting Peer Group point colours must follow the Peer Group filter mode');
+
+    await page.locator('[name=industry-dimension][value=industry]').check();
+    assert.equal(await page.locator('#industry-filter-title').innerText(),'產業');
+    assert.equal(await page.locator('#point-group').inputValue(),'band','leaving Peer Group must restore the previous point colours');
+    assert.equal(await page.locator('#curve-group').inputValue(),'band');
+    assert.match(await page.locator('#grouping-notice').innerText(),/Peer Group 的勾選已清除/);
+    assert.equal(await page.locator('#industry-filter input:checked').count(),0,'leaving Peer Group must forget the peer selection');
+    assert.equal((await page.locator('#bond-status').innerText()).includes('未分類'),false,'industry mode must not exclude unmapped bonds');
+    const allIndustries=[...new Set(data.records.filter(inBands).map(record=>record[9]))].sort();
+    assert.deepEqual((await page.locator('#industry-filter input').evaluateAll(inputs=>inputs.map(input=>input.value))).sort(),allIndustries,'industry mode must list every industry again');
+    const onlyIndustry=allIndustries[0];
+    await page.locator(`#industry-filter input[value="${onlyIndustry}"]`).check();
+    assert.equal(await page.locator('#bond-rows tr td:nth-child(5)').count()>0,true);
+    assert.equal((await page.locator('#bond-rows tr').count()),Math.min(50,data.records.filter(record=>inBands(record)&&record[9]===onlyIndustry).length),'switching back to 產業 must apply the industry filter alone');
     await page.locator('#reset-filters').click();
     assert.equal(await page.locator('#industry-filter-title').innerText(),'產業');
     assert.equal(await page.locator('[name=industry-dimension][value=industry]').isChecked(),true);

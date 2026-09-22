@@ -34,7 +34,7 @@
 
 ### LUAC 單券資料
 
-正式來源必須是單一工作表、固定 11 欄、BICS Level 1 產業、靜態與行情雙區塊的 `.xlsx`。允許無公式純值檔，或恰好一個 BQL 公式且已完成更新、儲存快取值的檔案；其他公式、缺失快取、缺值、非有限數字、重複或不匹配 ID、或混合資料日都拒絕整批更新。瀏覽器無法重新計算 BQL，發布前必須由使用者確認已在 Excel 更新完成並儲存。公開 schema v2 另含 `peer_definitions`（TICKER 對應 Peer Group），`columns` 與每筆記錄仍為 11 欄；`bonds.html` 的第二層篩選可在產業與 Peer Group 之間切換，Peer Group 模式只顯示已分類債券。Peer mapping 是含 `TICKER` 與 `Peer Group` 兩欄的選填 Excel（與 Supply 共用同一份）；網頁未提供時沿用目前公開快照內的 mapping。以下命令只輸出精簡公開 contract，私人 audit 必須在 repo 外：
+正式來源必須是單一工作表、固定 11 欄、BICS Level 1 產業、靜態與行情雙區塊的 `.xlsx`。允許無公式純值檔，或恰好一個 BQL 公式且已完成更新、儲存快取值的檔案；其他公式、缺失快取、缺值、非有限數字、重複或不匹配 ID、或混合資料日都拒絕整批更新。瀏覽器無法重新計算 BQL，發布前必須由使用者確認已在 Excel 更新完成並儲存。公開 schema v2 另含 `peer_definitions`（TICKER 對應 Peer Group），`columns` 與每筆記錄仍為 11 欄；`bonds.html` 的第二層篩選可在產業與 Peer Group 之間切換（切換時清除另一邊的勾選，兩者不會同時生效），Peer Group 模式只顯示已分類債券。Peer mapping 是含 `TICKER` 與 `Peer Group` 兩欄的選填 Excel（與 Supply 共用同一份）；網頁未提供時沿用目前公開快照內的 mapping。以下命令只輸出精簡公開 contract，私人 audit 必須在 repo 外：
 
 ```sh
 python3 scripts/extract_luac.py <LUAC.xlsx> \

@@ -2,7 +2,7 @@
   'use strict';
   const model=window.LuacModel;
   const bandColors={AAA:'#2c7fb8',AA:'#41ab5d',A:'#f0a202',BBB:'#d9488b',BB:'#7b61a8',NR:'#8b95a1'};
-  const palette=['#2c7fb8','#41ab5d','#f0a202','#d9488b','#7b61a8','#00a6a6','#e76f51','#6a994e','#577590','#b56576'];
+  const palette=['#2c7fb8','#41ab5d','#f0a202','#d9488b','#7b61a8','#00a6a6','#e76f51','#6a994e','#577590','#b56576','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf','#aec7e8','#ffbb78','#98df8a','#ff9896','#c5b0d5'];
   const groupLabels={band:'信評大類',industry:'產業',peer_group:'Peer Group',ticker:'Ticker'};
   const pageSize=50,xLimit={min:0,max:50};
   const emptySelection=new Set();
@@ -11,7 +11,7 @@
   ].map(id=>[id,document.getElementById(id)]));
   const state={
     bonds:[],date:'',metric:'yield_pct',selected:{rating:new Set(),industry:new Set(),ticker:new Set()},
-    filterOrder:['rating','industry','ticker'],available:{},pointGroup:'band',curveGroup:'band',curveSource:'filtered',industryDimension:'industry',
+    filterOrder:['rating','industry','ticker'],available:{},pointGroup:'band',curveGroup:'band',curveSource:'filtered',industryDimension:'industry',pointGroupBeforePeer:'band',curveGroupBeforePeer:'band',
     fit:new Map(),curves:new Map(),eligibility:new Map(),curveGroups:[],curvePopulation:[],table:[],plot:[],page:1,sort:{key:'residual',direction:'desc'},
     selectedBond:null,pinned:false,domain:null,baseDomain:null,screenPoints:[],drag:null,filterDrag:null,
     curveKey:'',renderTimer:null,
@@ -25,7 +25,7 @@
   const isOutlier=bond=>bond.flags.length>0;
   const sortedValues=values=>[...values].sort((a,b)=>String(a).localeCompare(String(b)));
   const groupKey=(bond,group)=>group==='band'?bond.band:bond[group];
-  const peerGroupingActive=()=>state.industryDimension==='peer_group'||state.pointGroup==='peer_group'||state.curveGroup==='peer_group';
+  const peerGroupingActive=()=>state.industryDimension==='peer_group';
   const peerOnly=bond=>!peerGroupingActive()||Boolean(bond.peer_group);
   const filterValue=(bond,name)=>name==='industry'&&state.industryDimension==='peer_group'?bond.peer_group:bond[name];
   const selectionFor=group=>{
@@ -90,14 +90,17 @@
     });
   }
 
+  function groupingLimit(){return peerGroupingActive()?palette.length:10;}
+
   function enforceGroupings(announce=false){
     const messages=[];
+    const limit=groupingLimit();
     const check=(kind,group)=>{
       if(group==='band')return group;
       const effective=groupingValues(group,curvePopulation()),chosen=selectionFor(group).size;
       const count=chosen||effective.length;
-      if(count>=1&&count<=10)return group;
-      if(announce)messages.push(`${kind}若依${groupLabels[group]}分類，需要 1–10 個有效分類；已改回信評大類。`);
+      if(count>=1&&count<=limit)return group;
+      if(announce)messages.push(`${kind}若依${groupLabels[group]}分類，需要 1–${limit} 個有效分類；已改回信評大類。`);
       return 'band';
     };
     state.pointGroup=check('點位顏色',state.pointGroup);
@@ -108,10 +111,34 @@
 
   function filterChanged(announce=true){syncCascadingFilters();enforceGroupings(announce);state.curveKey='';state.page=1;render();}
 
+  function switchDimension(value,notice='',skip=null){
+    const enteringPeer=value==='peer_group'&&state.industryDimension!=='peer_group',leavingPeer=value==='industry'&&state.industryDimension==='peer_group';
+    if(enteringPeer){
+      state.pointGroupBeforePeer=state.pointGroup;state.curveGroupBeforePeer=state.curveGroup;
+      if(skip!=='point'){state.pointGroup='ticker';elements['point-group'].value='ticker';}
+      if(skip!=='curve'){state.curveGroup='peer_group';elements['curve-group'].value='peer_group';}
+      notice=notice||'已切換至 Peer Group 篩選：產業的勾選已清除，點位顏色預設為 Ticker、曲線分類預設為 Peer Group。';
+    }
+    if(leavingPeer){
+      state.pointGroup=state.pointGroupBeforePeer;state.curveGroup=state.curveGroupBeforePeer;
+      elements['point-group'].value=state.pointGroup;elements['curve-group'].value=state.curveGroup;
+      notice='已切回產業篩選：Peer Group 的勾選已清除，點位顏色與曲線分類還原為進入前的設定。';
+    }
+    state.industryDimension=value;state.selected.industry=new Set();syncDimensionView();
+    filterChanged(false);
+    if(notice)elements['grouping-notice'].textContent=notice;
+  }
+
   function groupingValues(group,population){
     if(group==='band')return model.BANDS.filter(value=>population.some(bond=>bond.band===value));
     const available=new Set(population.map(bond=>groupKey(bond,group)).filter(Boolean)),selected=selectionFor(group);
     return selected.size?sortedValues([...selected].filter(value=>available.has(value))):sortedValues(available);
+  }
+
+  const dimensionLabels={point:'點位顏色',curve:'曲線分類'};
+  function usePeerGrouping(value,kind){
+    if(value==='peer_group'&&state.industryDimension!=='peer_group')switchDimension('peer_group',`${dimensionLabels[kind]}改為 Peer Group，篩選卡已切換至 Peer Group；產業的勾選已清除。`,kind);
+    else{enforceGroupings(true);render(false);}
   }
 
   function seriesColors(group,values){
@@ -249,7 +276,7 @@
 
   function initializeFilters(){
     state.filterOrder=['rating','industry','ticker'];state.selected={rating:new Set(state.bonds.filter(bond=>['AAA','AA','A','BBB'].includes(bond.band)).map(bond=>bond.rating)),industry:new Set(),ticker:new Set()};
-    state.pointGroup='band';state.curveGroup='band';state.curveSource='filtered';state.industryDimension='industry';state.sort={key:'residual',direction:'desc'};elements['point-group'].value='band';elements['curve-group'].value='band';elements['curve-source'].value='filtered';elements['grouping-notice'].textContent='';syncDimensionView();syncCascadingFilters();state.curveKey='';
+    state.pointGroup='band';state.curveGroup='band';state.curveSource='filtered';state.industryDimension='industry';state.pointGroupBeforePeer='band';state.curveGroupBeforePeer='band';state.sort={key:'residual',direction:'desc'};elements['point-group'].value='band';elements['curve-group'].value='band';elements['curve-source'].value='filtered';elements['grouping-notice'].textContent='';syncDimensionView();syncCascadingFilters();state.curveKey='';
   }
 
   function moveFilter(name,direction){const index=state.filterOrder.indexOf(name),next=index+direction;if(next<0||next>=state.filterOrder.length)return;state.filterOrder.splice(index,1);state.filterOrder.splice(next,0,name);filterChanged();}
@@ -265,11 +292,11 @@
   const finishFilterDrag=event=>{if(!state.filterDrag||event.pointerId!==state.filterDrag.pointerId)return;for(const card of elements['filter-grid'].querySelectorAll('.filter-card'))card.classList.remove('dragging','drop-target');state.filterDrag=null;filterChanged();};
   elements['filter-grid'].addEventListener('pointerup',finishFilterDrag);elements['filter-grid'].addEventListener('pointercancel',finishFilterDrag);
   document.querySelectorAll('[data-list-search]').forEach(input=>input.addEventListener('input',()=>applyListSearch(input.dataset.listSearch)));
-  document.querySelectorAll('[name=industry-dimension]').forEach(input=>input.addEventListener('change',()=>{state.industryDimension=input.value;state.selected.industry=new Set();syncDimensionView();filterChanged(false);}));
+  document.querySelectorAll('[name=industry-dimension]').forEach(input=>input.addEventListener('change',()=>switchDimension(input.value)));
 
   document.querySelectorAll('[name=bond-metric]').forEach(input=>input.addEventListener('change',()=>{state.metric=input.value;state.curveKey='';state.page=1;render();}));
-  elements['point-group'].addEventListener('change',()=>{state.pointGroup=elements['point-group'].value;enforceGroupings(true);render(false);});
-  elements['curve-group'].addEventListener('change',()=>{state.curveGroup=elements['curve-group'].value;enforceGroupings(true);state.curveKey='';render(false);});
+  elements['point-group'].addEventListener('change',()=>{state.pointGroup=elements['point-group'].value;usePeerGrouping(state.pointGroup,'point');});
+  elements['curve-group'].addEventListener('change',()=>{state.curveGroup=elements['curve-group'].value;state.curveKey='';usePeerGrouping(state.curveGroup,'curve');});
   elements['curve-source'].addEventListener('change',()=>{state.curveSource=elements['curve-source'].value;state.curveKey='';state.page=1;render(false);});
   elements['show-curves'].addEventListener('change',()=>{renderLegend();draw();});elements['show-outliers'].addEventListener('change',()=>render());
   elements['bond-search'].addEventListener('input',()=>{state.page=1;scheduleRender();});
