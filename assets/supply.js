@@ -212,8 +212,22 @@
   document.addEventListener('click',event=>{if(!event.target.closest('.supply-bar'))hideTip();});
   window.addEventListener('scroll',hideTip,true);
   const version=document.querySelector('.supply-date time')?.getAttribute('datetime')||String(Date.now());
+  function reportLoadFailure(error){
+    status.replaceChildren();
+    status.classList.add('error');
+    if(!error.staleVersion){status.textContent=`Supply 資料無法載入：${error.message}`;return;}
+    status.append(document.createTextNode('偵測到資料版本已更新，請重新載入頁面取得最新內容。'));
+    const reload=document.createElement('button');
+    reload.type='button';reload.className='supply-button reload-button';reload.textContent='重新載入';
+    reload.addEventListener('click',()=>{const next=new URL(location.href);next.searchParams.set('refresh',String(Date.now()));location.replace(next.toString());});
+    status.append(' ',reload);
+  }
   fetch(`assets/supply-data.json?v=${encodeURIComponent(version)}`,{cache:'no-store'})
     .then(response=>{if(!response.ok)throw Error(`HTTP ${response.status}`);return response.json();})
-    .then(snapshot=>{data=window.SupplyModel.validateSnapshot(snapshot);render();})
-    .catch(error=>{status.textContent=`Supply 資料無法載入：${error.message}`;status.classList.add('error');});
+    .then(snapshot=>{
+      if(!window.SupplyModel)throw Object.assign(Error('Supply 資料模型未載入'),{staleVersion:true});
+      try{return window.SupplyModel.validateSnapshot(snapshot);}catch(error){error.staleVersion=true;throw error;}
+    })
+    .then(snapshot=>{data=snapshot;render();})
+    .catch(reportLoadFailure);
 })();

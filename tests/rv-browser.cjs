@@ -329,7 +329,39 @@ async function runSupply(browser,base,width=1440){
   return {width,supplyRows:data.row_count};
 }
 
-module.exports={run,runBonds,runSupply};
+async function runStaleSupply(browser,base,width=1440){
+  const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width<650});
+  const page=await context.newPage(),errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  const stale=JSON.parse(readFileSync('assets/supply-data.json','utf8'));
+  stale.schema_version=1;
+  delete stale.top_tickers;
+  let hits=0;
+  await page.route('**/assets/supply-data.json*',route=>{hits++;return route.fulfill({contentType:'application/json',body:JSON.stringify(stale)});});
+  await page.goto(base+'supply.html');
+  const status=page.locator('#supply-status');
+  await status.locator('.reload-button').waitFor();
+  assert.match(await status.innerText(),/版本已更新/);
+  assert.equal(await status.getAttribute('role'),'status');
+  assert.equal(await page.locator('#ytd-value').innerText(),'—');
+  assert.equal(await page.locator('#ytd-chart .supply-bar').count(),0);
+  await page.locator('#supply-status .reload-button').click();
+  await page.waitForFunction(()=>location.search.includes('refresh='));
+  assert.ok(hits>=2,`reload must refetch the snapshot (fetches=${hits})`);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/supply stale banner overflow`);
+  assert.deepEqual(errors,[]);
+  await page.unroute('**/assets/supply-data.json*');
+  await page.route('**/assets/supply-data.json*',route=>route.fulfill({status:503,contentType:'application/json',body:'{}'}));
+  await page.goto(base+'supply.html');
+  await page.waitForFunction(()=>document.querySelector('#supply-status')?.textContent.includes('Supply 資料無法載入'));
+  assert.match(await page.locator('#supply-status').innerText(),/HTTP 503/);
+  assert.equal(await page.locator('#supply-status .reload-button').count(),0,'real failures must not be masked as a version update');
+  await context.close();
+  return {width,staleBanner:true};
+}
+
+module.exports={run,runBonds,runSupply,runStaleSupply};
 
 const FILES = {
   Spread:'2Y Percentile RV.xlsx',
@@ -518,6 +550,7 @@ if(require.main===module) (async()=>{
     for(const width of [1440,768,375]) console.log(await run(browser,base,width));
     for(const width of [1440,768,375]) console.log(await runBonds(browser,base,width));
     for(const width of [1440,768,375]) console.log(await runSupply(browser,base,width));
+    console.log(await runStaleSupply(browser,base,1440));
     const currentDate=JSON.parse(readFileSync('assets/rv-data.json','utf8')).date;
     const nextDate=new Date(`${currentDate}T00:00:00Z`);nextDate.setUTCDate(nextDate.getUTCDate()+1);
     const expectedDate=nextDate.toISOString().slice(0,10);

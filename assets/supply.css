@@ -10,6 +10,8 @@ body{background:#f5f7f9;font-family:"Microsoft JhengHei","PingFang TC",sans-seri
 .supply-date{text-align:right;margin:8px 0 0;color:#657987;font-size:13px}
 .supply-date time{display:inline-block;margin-left:5px;color:#143c5b;font-weight:800;font-size:17px}
 .supply-status{margin:20px 0 10px;color:#607685;font-size:13px}
+.supply-status.error{color:#a8321f}
+.supply-status .reload-button{margin-left:8px;min-height:32px;padding:4px 12px;font-size:12px}
 .supply-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:12px 0 22px}
 .supply-kpis article{padding:22px;border:1px solid #d7e2e9;border-radius:10px;background:#fff;box-shadow:0 8px 24px #173e5a0b}
 .supply-kpis p{margin:0;color:#5e7382;font-size:13px;font-weight:700}
