@@ -4,6 +4,7 @@ const LUAC_COLUMNS = ['id','security_des','issuer','ticker','maturity','rating',
 const LUAC_FLAGS = ['yield_outlier','maturity_outlier','oas_outlier'];
 const SUPPLY_TENORS = ['FRN','≤5Y','>5Y–10Y','>10Y / Perpetual'];
 const SUPPLY_RATINGS = ['AAA','AA+','AA','AA-','A+','A','A-','BBB+','BBB','BBB-','BB+','BB','BB-','B+','B','B-','CCC+','CCC','CCC-','CC','C','D','NR'];
+const OTHER_IG = 'Other IG';
 const SECTIONS = {
   Overview: ['JULI', 'Fin', 'Non-Fin', 'AA', 'A', 'BBB'],
   Cyclical: ['US Bank', 'Yankee Bank', 'Insurance', 'M&M', 'Chemical', 'Tech', 'Auto', 'Media', 'Energy', 'Capital Good'],
@@ -156,9 +157,17 @@ function validateSupplyPairs(value, name, allowEmpty = false) {
   return total;
 }
 
+function validateSupplyTop(value, name, denominator) {
+  if (!Array.isArray(value) || value.length > 5) throw new Error(`Supply ${name} Top 5 結構無效`);
+  const total = validateSupplyPairs(value, name, true);
+  if (value.some(row => row[1] <= 0) || total > denominator) throw new Error(`Supply ${name} Top 5 無效`);
+  const sorted = [...value].sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  if (value.some((row,index) => row[0] !== sorted[index][0] || row[1] !== sorted[index][1])) throw new Error(`Supply ${name} Top 5 排序不正確`);
+}
+
 export function validateSupplySnapshot(data) {
-  const fields = ['schema_version','date','year','currency','row_count','ytd_usd','mtd_usd','breakdowns','monthly','peer_definitions','peer_tickers','quality'];
-  if (!sameKeys(data, fields) || data.schema_version !== 1 || data.currency !== 'USD' || !validIsoDate(data.date) || data.year !== Number(data.date.slice(0, 4))) throw new Error('Supply 公開資料欄位不正確');
+  const fields = ['schema_version','date','year','currency','row_count','ytd_usd','mtd_usd','breakdowns','monthly','peer_definitions','peer_tickers','top_tickers','quality'];
+  if (!sameKeys(data, fields) || data.schema_version !== 2 || data.currency !== 'USD' || !validIsoDate(data.date) || data.year !== Number(data.date.slice(0, 4))) throw new Error('Supply 公開資料欄位不正確');
   if (!Number.isInteger(data.row_count) || data.row_count < 1 || data.row_count > 100000 || !Number.isSafeInteger(data.ytd_usd) || data.ytd_usd <= 0 || !Number.isSafeInteger(data.mtd_usd) || data.mtd_usd < 0 || data.mtd_usd > data.ytd_usd) throw new Error('Supply 摘要數值無效');
   if (!sameKeys(data.breakdowns, ['industry','rating','tenor','peer_group'])) throw new Error('Supply breakdown 結構不正確');
   for (const name of ['industry','rating','tenor','peer_group']) if (validateSupplyPairs(data.breakdowns[name], name) !== data.ytd_usd) throw new Error(`Supply ${name} 無法勾稽 YTD`);
@@ -169,11 +178,11 @@ export function validateSupplySnapshot(data) {
   if (!Array.isArray(data.peer_definitions) || !data.peer_definitions.length) throw new Error('Supply Peer Group 定義無效');
   const peerNames = [], tickers = new Set();
   for (const definition of data.peer_definitions) {
-    if (!sameKeys(definition, ['name','tickers']) || typeof definition.name !== 'string' || !definition.name || definition.name === 'Others' || peerNames.includes(definition.name) || !Array.isArray(definition.tickers) || !definition.tickers.length) throw new Error('Supply Peer Group 定義無效');
+    if (!sameKeys(definition, ['name','tickers']) || typeof definition.name !== 'string' || !definition.name || ['Others',OTHER_IG].includes(definition.name) || peerNames.includes(definition.name) || !Array.isArray(definition.tickers) || !definition.tickers.length) throw new Error('Supply Peer Group 定義無效');
     for (const ticker of definition.tickers) { if (typeof ticker !== 'string' || !ticker || tickers.has(ticker)) throw new Error('Supply Peer ticker 無效'); tickers.add(ticker); }
     peerNames.push(definition.name);
   }
-  const allPeers = [...peerNames, 'Others'];
+  const allPeers = [...peerNames, OTHER_IG];
   if (data.breakdowns.peer_group.map(row => row[0]).join('|') !== allPeers.join('|')) throw new Error('Supply Peer Group 順序不正確');
   if (!Array.isArray(data.monthly.peer_groups) || data.monthly.peer_groups.map(row => row[0]).join('|') !== allPeers.join('|')) throw new Error('Supply Peer 月度資料無效');
   const reconciled = Array(12).fill(0);
@@ -182,6 +191,18 @@ export function validateSupplySnapshot(data) {
   if (!sameKeys(data.peer_tickers, peerNames)) throw new Error('Supply Peer ticker 結構不正確');
   const peerTotals = Object.fromEntries(data.breakdowns.peer_group);
   for (const name of peerNames) if (validateSupplyPairs(data.peer_tickers[name], name, true) !== peerTotals[name]) throw new Error(`Supply ${name} ticker 無法勾稽`);
+  const top = data.top_tickers;
+  if (!sameKeys(top, ['ytd','monthly']) || !sameKeys(top.ytd, ['industry','rating','peer_group'])) throw new Error('Supply Top 5 結構不正確');
+  for (const field of ['industry','rating','peer_group']) {
+    const expected = data.breakdowns[field], rows = top.ytd[field];
+    if (!Array.isArray(rows) || rows.map(row => row?.[0]).join('|') !== expected.map(row => row[0]).join('|')) throw new Error(`Supply ${field} Top 5 分類不正確`);
+    const totals = Object.fromEntries(expected); for (const [name,tickers] of rows) validateSupplyTop(tickers, `${field} ${name}`, totals[name]);
+  }
+  for (const name of peerNames) if (JSON.stringify(Object.fromEntries(top.ytd.peer_group)[name]) !== JSON.stringify(data.peer_tickers[name].slice(0,5))) throw new Error(`Supply ${name} Top 5 無法勾稽`);
+  if (!sameKeys(top.monthly, ['total','peer_groups']) || !Array.isArray(top.monthly.total) || top.monthly.total.length !== 12) throw new Error('Supply 月度 Top 5 結構不正確');
+  top.monthly.total.forEach((rows,month) => validateSupplyTop(rows, `${month + 1} 月`, data.monthly.total[month]));
+  if (!Array.isArray(top.monthly.peer_groups) || top.monthly.peer_groups.map(row => row?.[0]).join('|') !== allPeers.join('|')) throw new Error('Supply 月度 Peer Top 5 分類不正確');
+  const monthlyPeer = Object.fromEntries(data.monthly.peer_groups); for (const [name,months] of top.monthly.peer_groups) { if (!Array.isArray(months) || months.length !== 12) throw new Error(`Supply ${name} 月度 Top 5 結構不正確`); months.forEach((rows,month) => validateSupplyTop(rows, `${month + 1} 月 ${name}`, monthlyPeer[name][month])); }
   if (!sameKeys(data.quality, ['date_corrections','duplicate_cusip_groups']) || Object.values(data.quality).some(value => !Number.isInteger(value) || value < 0)) throw new Error('Supply 品質統計無效');
   return {rows:data.row_count, dateCorrections:data.quality.date_corrections, duplicateCusips:data.quality.duplicate_cusip_groups};
 }

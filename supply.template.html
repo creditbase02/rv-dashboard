@@ -26,7 +26,8 @@
       <header class="chart-heading"><div><p class="section-label">YTD BREAKDOWN</p><h2 id="ytd-chart-title">YTD Issuance</h2><p id="ytd-chart-subtitle">Ind Sector</p></div><button id="peer-back" class="supply-button secondary" type="button" hidden>返回 Peer Group</button></header>
       <fieldset class="supply-segments"><legend class="sr-only">YTD grouping</legend><label><input type="radio" name="supply-group" value="industry" checked><span>Ind Sector</span></label><label><input type="radio" name="supply-group" value="rating"><span>BB Composite</span></label><label><input type="radio" name="supply-group" value="peer_group"><span>Peer Group</span></label></fieldset>
       <div id="ytd-chart" class="supply-chart-scroll" tabindex="0" aria-label="YTD issuance bar chart"></div>
-      <p class="chart-help">Peer Group 模式可點選已定義群組查看 ticker；Others 僅顯示總量。</p>
+      <section id="ytd-top-tickers" class="top-tickers" aria-live="polite" hidden></section>
+      <p class="chart-help">點選長條可查看 Top 5 ticker；Peer Group 模式可下鑽已定義群組，Other IG 僅顯示 Top 5。</p>
     </section>
 
     <section class="supply-card" aria-labelledby="monthly-title">
@@ -34,6 +35,7 @@
       <fieldset class="supply-segments"><legend class="sr-only">Monthly grouping</legend><label><input type="radio" name="monthly-group" value="total" checked><span>All IG</span></label><label><input type="radio" name="monthly-group" value="peer"><span>Peer Group</span></label></fieldset>
       <div id="monthly-legend" class="supply-legend" aria-label="Monthly chart legend"></div>
       <div id="monthly-chart" class="supply-chart-scroll" tabindex="0" aria-label="Monthly issuance bar chart"></div>
+      <section id="monthly-top-tickers" class="top-tickers" aria-live="polite" hidden></section>
     </section>
 
     <section class="breakdown-section" aria-labelledby="breakdown-title">

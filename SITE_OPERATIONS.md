@@ -71,7 +71,7 @@ python3 scripts/extract_supply.py <Supply.xlsx> \
   --audit <repo之外>/supply-audit.json
 ```
 
-公開 snapshot 只含日期、主年份、筆數、YTD／MTD 整數 USD、Industry／Rating／Tenor／Peer Group 彙總、12 個月總量與 Peer Group 堆疊、已定義群組的 ticker 彙總、mapping 與安全品質計數。自動更新允許同日更正，但日期不得早於正式站，且筆數與 YTD 金額相較前版都必須在 ±20% 內；超出時改走人工 PR。
+公開 Supply schema v2 只含日期、主年份、筆數、YTD／MTD 整數 USD、Industry／Rating／Tenor／Peer Group 彙總、12 個月總量與 Peer Group 堆疊、已定義群組的 ticker 彙總、各分類與月份最多五筆的聚合 ticker、mapping 與安全品質計數。未定義群組統一命名為 `Other IG`。自動更新允許同日更正，但日期不得早於正式站，且筆數與 YTD 金額相較前版都必須在 ±20% 內；超出時改走人工 PR。
 
 Supply 自動資料 PR 的安全條件為：作者等於 `RV_UPLOAD_APP_LOGIN`、branch 以 `automation/supply-data-` 開頭、label 為 `automated-supply-data`、diff 只有 `assets/supply-data.json`，且 Supply 快速 CI 通過。`SUPPLY_UPLOAD_ENABLED` 與網站 `supply_enabled` 是獨立開關。
 
