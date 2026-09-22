@@ -12,10 +12,10 @@ python3 -m http.server 8766 --directory public
 pnpm run test:browser -- http://127.0.0.1:8766/
 ```
 
-首頁保留既有 RV 圖表；`bonds.html` 提供「單券相對價值比較表」，包括 Yield／OAS 點位、穩健 LOWESS 信評曲線、篩選與排名表；`supply.html` 提供 IG Primary Supply 的 YTD／MTD、月度與 Industry／Rating／Tenor／Peer Group 分析。
+首頁保留既有 RV 圖表；`bonds.html` 提供「單券相對價值比較表」，包括 Yield／OAS 點位、穩健 LOWESS 信評曲線、篩選與排名表，第二層篩選可在產業與 Peer Group 之間切換；`supply.html` 提供 IG Primary Supply 的 YTD／MTD、月度與 Industry／Rating／Tenor／Peer Group 分析。
 
 原始 Excel、PPT、PDF 與私人稽核資料不得加入 Git。公開端只保存通過嚴格驗證的 RV、LUAC 與 Supply 聚合 JSON。
 
-網站的「更新資料」頁會直接在瀏覽器記憶體中解析 RV 四份 Excel、BICS Level 1 的 LUAC 純值／單一 BQL 快取 workbook，或獨立 Supply workbook，只把通過嚴格驗證的公開 JSON 傳給更新服務。三種資料有各自的發布開關、branch、label 與單檔 diff 防護。
+網站的「更新資料」頁會直接在瀏覽器記憶體中解析 RV 四份 Excel、BICS Level 1 的 LUAC 純值／單一 BQL 快取 workbook，或獨立 Supply workbook，只把通過嚴格驗證的公開 JSON 傳給更新服務。Peer Group Excel 是選填的共用欄位，未選取時 LUAC 與 Supply 各自沿用正式站現行 mapping。三種資料有各自的發布開關、branch、label 與單檔 diff 防護。
 
 完整維運流程見 `SITE_OPERATIONS.md`。

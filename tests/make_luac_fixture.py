@@ -39,6 +39,39 @@ def formula_without_cache(column: int, row: int, formula: str) -> str:
     return f'<c r="{address(column, row)}"><f>{html.escape(formula)}</f></c>'
 
 
+def write_package(path: Path, sheet_name: str, rows: list[str]) -> Path:
+    sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' \
+        + "".join(rows) + '</sheetData></worksheet>'
+    workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' \
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' \
+        f'<sheets><sheet name="{html.escape(sheet_name)}" sheetId="1" r:id="rId1"/></sheets></workbook>'
+    workbook_rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' \
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' \
+        '</Relationships>'
+    package_rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' \
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' \
+        '</Relationships>'
+    content_types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' \
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' \
+        '<Default Extension="xml" ContentType="application/xml"/>' \
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' \
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' \
+        '</Types>'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", package_rels)
+        archive.writestr("xl/workbook.xml", workbook)
+        archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+        archive.writestr("xl/worksheets/sheet1.xml", sheet)
+    return path
+
+
 def make_fixture(path: Path, variant: str = "valid", data_date: str = "2026-09-16", count: int = 40) -> Path:
     headers = list(HEADERS)
     if variant == "level3":
@@ -79,47 +112,44 @@ def make_fixture(path: Path, variant: str = "valid", data_date: str = "2026-09-1
             else:
                 contents.append(cell(column, row, value, formula))
         rows.append(f'<row r="{row}">' + "".join(contents) + "</row>")
+    return write_package(path, "LUAC", rows)
 
-    sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
-        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' \
-        + "".join(rows) + '</sheetData></worksheet>'
-    workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
-        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' \
-        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' \
-        '<sheets><sheet name="LUAC" sheetId="1" r:id="rId1"/></sheets></workbook>'
-    workbook_rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' \
-        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' \
-        '</Relationships>'
-    package_rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' \
-        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' \
-        '</Relationships>'
-    content_types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
-        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' \
-        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' \
-        '<Default Extension="xml" ContentType="application/xml"/>' \
-        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' \
-        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' \
-        '</Types>'
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("[Content_Types].xml", content_types)
-        archive.writestr("_rels/.rels", package_rels)
-        archive.writestr("xl/workbook.xml", workbook)
-        archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
-        archive.writestr("xl/worksheets/sheet1.xml", sheet)
-    return path
+
+def make_peer_fixture(path: Path, variant: str = "valid") -> Path:
+    headers = {1: "TICKER", 2: "Peer Group"}
+    records = [["T0", "Fixture Banks"], ["T1", "Fixture Banks"], ["T2", "Fixture Tech"], ["T3", "Fixture Tech"]]
+    if variant == "duplicate-ticker":
+        records.append(["T0", "Fixture Tech"])
+    elif variant == "numeric-ticker":
+        records.append([123, "Fixture Tech"])
+    elif variant == "missing-group":
+        records.append(["T9", None])
+    elif variant == "formula":
+        records.append(["T5", "Fixture Tech"])
+    sheet_rows = ['<row r="1">' + "".join(cell(column, 1, value) for column, value in headers.items()) + "</row>"]
+    for index, (ticker, group) in enumerate(records, start=2):
+        if variant == "formula" and ticker == "T5":
+            contents = [f'<c r="A{index}" t="str"><f>UPPER("T5")</f><v>T5</v></c>']
+        else:
+            contents = [cell(1, index, ticker)]
+        if group is not None:
+            contents.append(cell(2, index, group))
+        sheet_rows.append(f'<row r="{index}">' + "".join(contents) + "</row>")
+    return write_package(path, "Peers", sheet_rows)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--peers-out", type=Path, help="Also write a Peer Group workbook here")
     parser.add_argument("--variant", default="valid")
+    parser.add_argument("--peers-variant", default="valid")
     parser.add_argument("--date", default="2026-09-16")
     parser.add_argument("--count", type=int, default=40)
     args = parser.parse_args()
     make_fixture(args.out, args.variant, args.date, args.count)
+    if args.peers_out:
+        make_peer_fixture(args.peers_out, args.peers_variant)
 
 
 if __name__ == "__main__":

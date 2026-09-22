@@ -37,9 +37,10 @@ const LUAC_COLUMNS = ['id','security_des','issuer','ticker','maturity','rating',
 
 function luacSnapshot(date = '2026-09-16', count = 25) {
   return {
-    schema_version: 1,
+    schema_version: 2,
     date,
     columns: LUAC_COLUMNS,
+    peer_definitions: [{name: 'Fixture Banks', tickers: ['T0', 'T1']}],
     records: Array.from({length: count}, (_, index) => [
       `US000000${String(index).padStart(4, '0')}`,
       `TEST ${index} 5.0 09/15/30`,
@@ -148,6 +149,11 @@ test('strict LUAC snapshot validates flags, IDs, and finite numbers', () => {
   notFinite.records[0][7] = Number.POSITIVE_INFINITY;
   assert.throws(() => validateLuacSnapshot(notFinite), /數值或日期無效/);
   assert.throws(() => validateLuacSnapshot({...luacSnapshot(), date: '2026-02-31'}), /日期不正確/);
+  assert.throws(() => validateLuacSnapshot({...luacSnapshot(), schema_version: 1}), /欄位不正確/);
+  assert.throws(() => validateLuacSnapshot({...luacSnapshot(), peer_definitions: []}), /Peer Group 定義無效/);
+  assert.throws(() => validateLuacSnapshot({...luacSnapshot(), peer_definitions: [{name: 'A', tickers: ['T0']}, {name: 'B', tickers: ['T0']}]}), /ticker 重複/);
+  assert.throws(() => validateLuacSnapshot({...luacSnapshot(), peer_definitions: [{name: 'A', tickers: ['t0']}]}), /定義無效/);
+  assert.throws(() => validateLuacSnapshot({...luacSnapshot(), peer_definitions: [{name: 'A', tickers: ['T0'], extra: true}]}), /定義無效/);
 });
 
 test('strict Supply snapshot validates exact reconciliation and safe metadata', () => {

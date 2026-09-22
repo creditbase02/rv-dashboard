@@ -25,10 +25,11 @@
   const luacPublishStatus=document.querySelector('#luac-publish-status'),luacPublishButton=document.querySelector('#publish-luac'),luacPassword=document.querySelector('#luac-upload-password');
   const bqlConfirmWrap=document.querySelector('#bql-confirm-wrap'),bqlConfirm=document.querySelector('#bql-confirm');
   const bloombergPanel=document.querySelector('#bloomberg-diagnostic'),bloombergButton=document.querySelector('#probe-bloomberg'),bloombergStatus=document.querySelector('#bloomberg-status'),bloombergSummary=document.querySelector('#bloomberg-summary');
-  const supplyFile=document.querySelector('#supply-file'),supplyFileName=document.querySelector('#supply-file-name'),supplyPeerFile=document.querySelector('#supply-peer-file'),supplyPeerFileName=document.querySelector('#supply-peer-file-name');
+  const supplyFile=document.querySelector('#supply-file'),supplyFileName=document.querySelector('#supply-file-name');
+  const peerFile=document.querySelector('#peer-group-file'),peerFileName=document.querySelector('#peer-group-file-name');
   const supplyValidationStatus=document.querySelector('#supply-validation-status'),supplyValidationSummary=document.querySelector('#supply-validation-summary'),supplyPublishStatus=document.querySelector('#supply-publish-status'),supplyPublishButton=document.querySelector('#publish-supply'),supplyPassword=document.querySelector('#supply-upload-password');
   const bridgeToken=new URLSearchParams(location.hash.slice(1)).get('bbg-token');
-  const state={files:{},data:null,luacData:null,luacSourceMode:null,luacPublishEligible:false,supplyData:null,supplyPublishEligible:false,bridgeReady:false,config:{enabled:false,luac_enabled:false,supply_enabled:false,api_url:''},currentDate:null,currentLuacDate:null,currentLuacCount:null,currentSupply:null,token:null};
+  const state={files:{},data:null,luacData:null,luacSourceMode:null,luacPublishEligible:false,supplyData:null,supplyPublishEligible:false,bridgeReady:false,config:{enabled:false,luac_enabled:false,supply_enabled:false,api_url:''},currentDate:null,currentLuacDate:null,currentLuacCount:null,currentLuacPeers:null,currentSupply:null,token:null};
 
   const setStatus=(element,type,message)=>{element.className=`status ${type}`;element.textContent=message;};
   const finite=value=>typeof value==='number'&&Number.isFinite(value);
@@ -140,7 +141,7 @@
     if(oas<-250||oas>5000)flags.push('oas_outlier');
     return flags;
   };
-  async function parseLuacWorkbook(file){
+  async function parseLuacWorkbook(file,peerDefinitions){
     if(!file||!file.name.toLowerCase().endsWith('.xlsx'))throw Error('LUAC 必須選取 .xlsx 檔案');
     const entries=await unzip(file),strings=sharedStrings(entries),book=workbookSheets(entries);
     if(book.sheets.size!==1)throw Error('LUAC Excel 必須且只能有一個工作表');
@@ -178,7 +179,7 @@
       return [id,luacText(source[1],'SECURITY_DES',0,180),luacText(source[2],'發行人',0,300),luacText(source[3],'Ticker',0,32),dateFromSerial(source[4],book.date1904),luacText(source[5],'信評',0,16),years,oas,bondYield,luacText(source[10],'產業',0,160),luacFlags(years,oas,bondYield)];
     });
     if(records.length<1||records.length>20000)throw Error(`LUAC 債券筆數 ${records.length} 超出允許範圍`);
-    const data={schema_version:1,date:[...dates][0],columns:window.LuacModel.COLUMNS,records};
+    const data={schema_version:window.LuacModel.SCHEMA_VERSION,date:[...dates][0],columns:window.LuacModel.COLUMNS,peer_definitions:peerDefinitions,records};
     window.LuacModel.validateSnapshot(data);
     if(new TextEncoder().encode(JSON.stringify({data})).byteLength>4*1024*1024)throw Error('LUAC 公開資料超過 4 MiB 上限');
     return {data,sourceMode};
@@ -207,8 +208,8 @@
   }
   function supplyTenor(security,tenor,row){const upper=security.toUpperCase();if(upper.includes('FLOAT')||/\bFRN\b/.test(upper))return 'FRN';if(upper.includes('PERP'))return '>10Y / Perpetual';if(!finite(tenor)||tenor<=0)throw Error(`Supply 第 ${row} 列的 Tenor 無效`);if(tenor<=5)return '≤5Y';if(tenor<=10)return '>5Y–10Y';return '>10Y / Perpetual';}
   const supplyRating=value=>{const normalized=typeof value==='string'?value.trim().toUpperCase():'';return window.SupplyModel.RATING_ORDER.includes(normalized)?normalized:'NR';};
-  async function parseSupplyPeers(file){
-    if(!file)return structuredClone(state.currentSupply?.peer_definitions||[]);
+  async function parsePeerDefinitions(file,fallback){
+    if(!file)return structuredClone(fallback||[]);
     const table=await tableFromWorkbook(file,['TICKER','Peer Group'],'Peer Group Excel'),maximum=[...table.values.keys()].reduce((value,address)=>Math.max(value,Number(/\d+$/.exec(address)?.[0]||0)),1),definitions=[],byName=new Map(),seen=new Set(),formulaAddresses=new Set(nodes(table.doc,'f').map(item=>item.parentElement?.getAttribute('r')));
     for(let row=2;row<=maximum;row++){
       const tickerValue=table.values.get(`${column(table.headers.TICKER)}${row}`),groupValue=table.values.get(`${column(table.headers['Peer Group'])}${row}`);
@@ -222,8 +223,8 @@
   }
   const supplyPairs=(totals,order=null)=>{const names=order||[...totals.keys()].sort((a,b)=>totals.get(b)-totals.get(a)||a.localeCompare(b));return names.map(name=>[name,totals.get(name)||0]);};
   const supplyTop=totals=>supplyPairs(totals).slice(0,5);
-  async function parseSupplyWorkbook(file,peerFile){
-    const [table,definitions]=await Promise.all([tableFromWorkbook(file,SUPPLY_REQUIRED,'Supply Excel'),parseSupplyPeers(peerFile)]);
+  async function parseSupplyWorkbook(file){
+    const [table,definitions]=await Promise.all([tableFromWorkbook(file,SUPPLY_REQUIRED,'Supply Excel'),parsePeerDefinitions(peerFile.files[0]||null,state.currentSupply?.peer_definitions)]);
     if(!definitions.length)throw Error('正式站與上傳檔都沒有 Peer Group mapping');
     const maximum=[...table.values.keys()].reduce((value,address)=>Math.max(value,Number(/\d+$/.exec(address)?.[0]||0)),1),formulaAddresses=new Set(nodes(table.doc,'f').map(item=>item.parentElement?.getAttribute('r'))),records=[],requiredColumns=SUPPLY_REQUIRED.map(field=>table.headers[field]);
     for(let row=2;row<=maximum;row++){
@@ -279,7 +280,8 @@
   function refreshLuacActions(){const confirmed=state.luacSourceMode!=='bql_cache'||bqlConfirm.checked;luacPublishButton.disabled=!(state.luacData&&state.luacPublishEligible&&confirmed&&state.config.luac_enabled);bloombergButton.disabled=!(state.bridgeReady&&state.luacData&&confirmed);}
   function clearLuac(){state.luacData=null;state.luacSourceMode=null;state.luacPublishEligible=false;luacFile.value='';luacFileName.textContent='尚未選取';luacValidationSummary.hidden=true;bqlConfirm.checked=false;bqlConfirmWrap.hidden=true;bloombergSummary.hidden=true;refreshLuacActions();setStatus(luacValidationStatus,'neutral','等待選取 LUAC Excel。');setStatus(luacPublishStatus,'neutral','尚未送出。');}
   function refreshSupplyActions(){supplyPublishButton.disabled=!(state.supplyData&&state.supplyPublishEligible&&state.config.supply_enabled);}
-  function clearSupply(){state.supplyData=null;state.supplyPublishEligible=false;supplyFile.value='';supplyPeerFile.value='';supplyFileName.textContent='尚未選取';supplyPeerFileName.textContent='沿用現行 mapping';supplyValidationSummary.hidden=true;refreshSupplyActions();setStatus(supplyValidationStatus,'neutral','等待選取 Supply Excel。');setStatus(supplyPublishStatus,'neutral','尚未送出。');}
+  function clearPeer(){peerFile.value='';peerFileName.textContent='沿用現行 mapping';state.luacData=null;state.luacSourceMode=null;state.luacPublishEligible=false;state.supplyData=null;bqlConfirm.checked=false;bqlConfirmWrap.hidden=true;refreshLuacActions();refreshSupplyActions();setStatus(luacValidationStatus,'neutral','等待選取 LUAC Excel。');setStatus(supplyValidationStatus,'neutral','等待選取 Supply Excel。');}
+  function clearSupply(){state.supplyData=null;state.supplyPublishEligible=false;supplyFile.value='';supplyFileName.textContent='尚未選取';supplyValidationSummary.hidden=true;refreshSupplyActions();setStatus(supplyValidationStatus,'neutral','等待選取 Supply Excel。');setStatus(supplyPublishStatus,'neutral','尚未送出。');}
   async function validateFiles(){
     const missing=METRICS.filter(metric=>!state.files[metric]);
     if(missing.length){setStatus(validationStatus,'error',`缺少：${missing.join('、')}`);return;}
@@ -304,7 +306,9 @@
     if(!file){setStatus(luacValidationStatus,'error','請先選取 LUAC Excel。');return;}
     setStatus(luacValidationStatus,'neutral','正在本機解析 LUAC Excel…');
     try{
-      const parsed=await parseLuacWorkbook(file),data=parsed.data,count=data.records.length,anomalies=data.records.filter(record=>record[10].length).length;
+      const definitions=await parsePeerDefinitions(peerFile.files[0]||null,state.currentLuacPeers);
+      if(!definitions.length)throw Error('正式站與上傳檔都沒有 Peer Group mapping');
+      const parsed=await parseLuacWorkbook(file,definitions),data=parsed.data,count=data.records.length,anomalies=data.records.filter(record=>record[10].length).length;
       if(state.currentLuacDate&&data.date<state.currentLuacDate)throw Error(`資料日期 ${data.date} 早於正式站 ${state.currentLuacDate}`);
       if(state.currentLuacCount){const low=state.currentLuacCount*.8,high=state.currentLuacCount*1.2;if(count<low||count>high)throw Error(`債券筆數由 ${state.currentLuacCount} 變為 ${count}，超過 ±20%，需走人工 PR`);}
       state.luacData=data;state.luacSourceMode=parsed.sourceMode;state.luacPublishEligible=!state.currentLuacDate||data.date>=state.currentLuacDate;luacFile.value='';luacFileName.textContent='原始檔已從程式狀態釋放';
@@ -318,10 +322,10 @@
     const file=supplyFile.files[0];if(!file){setStatus(supplyValidationStatus,'error','請先選取 Supply Excel。');return;}
     setStatus(supplyValidationStatus,'neutral','正在本機解析 Supply Excel…');
     try{
-      const data=await parseSupplyWorkbook(file,supplyPeerFile.files[0]||null);
+      const data=await parseSupplyWorkbook(file);
       if(state.currentSupply&&data.date<state.currentSupply.date)throw Error(`資料日期 ${data.date} 早於正式站 ${state.currentSupply.date}`);
       if(state.currentSupply){for(const [field,label] of [['row_count','筆數'],['ytd_usd','YTD 發行量']]){const ratio=data[field]/state.currentSupply[field];if(ratio<.8||ratio>1.2)throw Error(`Supply ${label}變動超過 ±20%，需走人工 PR`);}}
-      state.supplyData=data;state.supplyPublishEligible=!state.currentSupply||data.date>=state.currentSupply.date;supplyFile.value='';supplyPeerFile.value='';supplyFileName.textContent='原始檔已從程式狀態釋放';supplyPeerFileName.textContent='原始檔已釋放／沿用現行 mapping';
+      state.supplyData=data;state.supplyPublishEligible=!state.currentSupply||data.date>=state.currentSupply.date;supplyFile.value='';supplyFileName.textContent='原始檔已從程式狀態釋放';
       document.querySelector('#supply-summary-date').textContent=data.date;document.querySelector('#supply-summary-count').textContent=data.row_count.toLocaleString('en-US');document.querySelector('#supply-summary-ytd').textContent=`$${(data.ytd_usd/1e9).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}bn`;document.querySelector('#supply-summary-corrections').textContent=data.quality.date_corrections.toLocaleString('en-US');document.querySelector('#supply-summary-duplicates').textContent=data.quality.duplicate_cusip_groups.toLocaleString('en-US');supplyValidationSummary.hidden=false;
       const same=data.date===state.currentSupply?.date?' 資料日與正式站相同，將建立同日更正 PR。':'';setStatus(supplyValidationStatus,'success',`驗證通過。原始 Excel 已釋放，只保留聚合後的公開資料。${same}`);refreshSupplyActions();
     }catch(error){state.supplyData=null;state.supplyPublishEligible=false;refreshSupplyActions();setStatus(supplyValidationStatus,'error',error.message||String(error));}
@@ -414,7 +418,7 @@
   async function initialize(){
     try{
       const [config,current,currentLuac,currentSupply]=await Promise.all([fetch('assets/upload-config.json',{cache:'no-store'}).then(r=>r.json()),fetch('assets/rv-data.json',{cache:'no-store'}).then(r=>r.json()),fetch('assets/luac-bonds.json',{cache:'no-store'}).then(r=>r.json()),fetch('assets/supply-data.json',{cache:'no-store'}).then(r=>r.json())]);
-      state.config=config;state.currentDate=current.date;state.currentLuacDate=currentLuac.date;state.currentLuacCount=currentLuac.records.length;state.currentSupply=window.SupplyModel.validateSnapshot(currentSupply);
+      state.config=config;state.currentDate=current.date;state.currentLuacDate=currentLuac.date;state.currentLuacCount=currentLuac.records.length;state.currentLuacPeers=currentLuac.peer_definitions||[];state.currentSupply=window.SupplyModel.validateSnapshot(currentSupply);
       serviceState.textContent=config.enabled?'更新服務已啟用。驗證資料後即可發布。':'更新服務尚未啟用；目前只能在本機驗證 Excel。';
       password.disabled=!config.enabled;luacPassword.disabled=!config.luac_enabled;supplyPassword.disabled=!config.supply_enabled;refreshLuacActions();refreshSupplyActions();
       if(!config.luac_enabled)setStatus(luacPublishStatus,'neutral','單券資料發布尚未啟用；目前只能在本機驗證。');
@@ -436,7 +440,8 @@
   bqlConfirm.addEventListener('change',refreshLuacActions);bloombergButton.addEventListener('click',probeBloomberg);
   luacPublishButton.addEventListener('click',publishLuac);
   supplyFile.addEventListener('change',()=>{if(supplyFile.files[0]){supplyFileName.textContent=supplyFile.files[0].name;state.supplyData=null;supplyValidationSummary.hidden=true;refreshSupplyActions();setStatus(supplyValidationStatus,'neutral','檔案已變更，請重新驗證。');}});
-  supplyPeerFile.addEventListener('change',()=>{if(supplyPeerFile.files[0]){supplyPeerFileName.textContent=supplyPeerFile.files[0].name;state.supplyData=null;supplyValidationSummary.hidden=true;refreshSupplyActions();setStatus(supplyValidationStatus,'neutral','Peer mapping 已變更，請重新驗證。');}});
+  peerFile.addEventListener('change',()=>{if(peerFile.files[0]){peerFileName.textContent=peerFile.files[0].name;state.luacData=null;state.luacSourceMode=null;state.luacPublishEligible=false;state.supplyData=null;luacValidationSummary.hidden=true;supplyValidationSummary.hidden=true;bqlConfirm.checked=false;bqlConfirmWrap.hidden=true;refreshLuacActions();refreshSupplyActions();setStatus(luacValidationStatus,'neutral','Peer mapping 已變更，請重新驗證 LUAC Excel。');setStatus(supplyValidationStatus,'neutral','Peer mapping 已變更，請重新驗證 Supply Excel。');}});
+  document.querySelector('#clear-peer').addEventListener('click',clearPeer);
   document.querySelector('#clear-supply').addEventListener('click',clearSupply);document.querySelector('#validate-supply').addEventListener('click',validateSupplyFile);supplyPublishButton.addEventListener('click',publishSupply);
   initialize();initializeBloombergBridge();
 })();

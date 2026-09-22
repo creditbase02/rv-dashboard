@@ -3,14 +3,15 @@
   const model=window.LuacModel;
   const bandColors={AAA:'#2c7fb8',AA:'#41ab5d',A:'#f0a202',BBB:'#d9488b',BB:'#7b61a8',NR:'#8b95a1'};
   const palette=['#2c7fb8','#41ab5d','#f0a202','#d9488b','#7b61a8','#00a6a6','#e76f51','#6a994e','#577590','#b56576'];
-  const groupLabels={band:'信評大類',industry:'產業',ticker:'Ticker'};
+  const groupLabels={band:'信評大類',industry:'產業',peer_group:'Peer Group',ticker:'Ticker'};
   const pageSize=50,xLimit={min:0,max:50};
+  const emptySelection=new Set();
   const elements=Object.fromEntries([
-    'bond-total','bond-status','bond-search','show-curves','show-outliers','reset-filters','point-group','curve-group','curve-source','grouping-notice','filter-grid','chart-title','chart-subtitle','curve-legend','canvas-wrap','bond-canvas','bond-tooltip','bond-rows','table-summary','page-prev','page-next','page-label','zoom-reset','residual-heading'
+    'bond-total','bond-status','bond-search','show-curves','show-outliers','reset-filters','point-group','curve-group','curve-source','grouping-notice','filter-grid','chart-title','chart-subtitle','curve-legend','canvas-wrap','bond-canvas','bond-tooltip','bond-rows','table-summary','page-prev','page-next','page-label','zoom-reset','residual-heading','industry-filter-title'
   ].map(id=>[id,document.getElementById(id)]));
   const state={
     bonds:[],date:'',metric:'yield_pct',selected:{rating:new Set(),industry:new Set(),ticker:new Set()},
-    filterOrder:['rating','industry','ticker'],available:{},pointGroup:'band',curveGroup:'band',curveSource:'filtered',
+    filterOrder:['rating','industry','ticker'],available:{},pointGroup:'band',curveGroup:'band',curveSource:'filtered',industryDimension:'industry',
     fit:new Map(),curves:new Map(),eligibility:new Map(),curveGroups:[],curvePopulation:[],table:[],plot:[],page:1,sort:{key:'residual',direction:'desc'},
     selectedBond:null,pinned:false,domain:null,baseDomain:null,screenPoints:[],drag:null,filterDrag:null,
     curveKey:'',renderTimer:null,
@@ -24,10 +25,18 @@
   const isOutlier=bond=>bond.flags.length>0;
   const sortedValues=values=>[...values].sort((a,b)=>String(a).localeCompare(String(b)));
   const groupKey=(bond,group)=>group==='band'?bond.band:bond[group];
+  const peerGroupingActive=()=>state.industryDimension==='peer_group'||state.pointGroup==='peer_group'||state.curveGroup==='peer_group';
+  const peerOnly=bond=>!peerGroupingActive()||Boolean(bond.peer_group);
+  const filterValue=(bond,name)=>name==='industry'&&state.industryDimension==='peer_group'?bond.peer_group:bond[name];
+  const selectionFor=group=>{
+    if(group==='industry')return state.industryDimension==='peer_group'?emptySelection:state.selected.industry;
+    if(group==='peer_group')return state.industryDimension==='peer_group'?state.selected.industry:emptySelection;
+    return state.selected[group]||emptySelection;
+  };
 
   function filterActive(name){return name==='rating'||state.selected[name].size>0;}
-  function passesFilter(bond,name){return !filterActive(name)||state.selected[name].has(bond[name]);}
-  function passesAllFilters(bond){return state.filterOrder.every(name=>passesFilter(bond,name));}
+  function passesFilter(bond,name){return !filterActive(name)||state.selected[name].has(filterValue(bond,name));}
+  function passesAllFilters(bond){return peerOnly(bond)&&state.filterOrder.every(name=>passesFilter(bond,name));}
 
   function optionLabel(name,value,count){
     const label=document.createElement('label'),input=document.createElement('input'),text=document.createElement('span');
@@ -55,8 +64,8 @@
     const active=document.activeElement?.matches?.('.check-list input')?{name:document.activeElement.dataset.filter,value:document.activeElement.value}:null;
     for(let index=0;index<state.filterOrder.length;index++){
       const name=state.filterOrder[index],upstream=state.filterOrder.slice(0,index);
-      const pool=state.bonds.filter(bond=>upstream.every(filter=>passesFilter(bond,filter))),counts=new Map();
-      for(const bond of pool)counts.set(bond[name],(counts.get(bond[name])||0)+1);
+      const pool=state.bonds.filter(bond=>peerOnly(bond)&&upstream.every(filter=>passesFilter(bond,filter))),counts=new Map();
+      for(const bond of pool){const value=filterValue(bond,name);if(!value)continue;counts.set(value,(counts.get(value)||0)+1);}
       const values=sortedValues(counts.keys()),allowed=new Set(values);
       state.selected[name]=new Set([...state.selected[name]].filter(value=>allowed.has(value)));
       state.available[name]={values,counts};
@@ -85,7 +94,8 @@
     const messages=[];
     const check=(kind,group)=>{
       if(group==='band')return group;
-      const effective=groupingValues(group,curvePopulation()),count=kind==='曲線'&&group==='industry'?effective.length:state.selected[group].size;
+      const effective=groupingValues(group,curvePopulation()),chosen=selectionFor(group).size;
+      const count=chosen||effective.length;
       if(count>=1&&count<=10)return group;
       if(announce)messages.push(`${kind}若依${groupLabels[group]}分類，需要 1–10 個有效分類；已改回信評大類。`);
       return 'band';
@@ -100,7 +110,7 @@
 
   function groupingValues(group,population){
     if(group==='band')return model.BANDS.filter(value=>population.some(bond=>bond.band===value));
-    const available=new Set(population.map(bond=>groupKey(bond,group))),selected=state.selected[group];
+    const available=new Set(population.map(bond=>groupKey(bond,group)).filter(Boolean)),selected=selectionFor(group);
     return selected.size?sortedValues([...selected].filter(value=>available.has(value))):sortedValues(available);
   }
 
@@ -117,7 +127,7 @@
 
   function computeCurves(){
     const selectedKey=state.filterOrder.map(name=>`${name}:${sortedValues(state.selected[name]).join('|')}`).join('::');
-    const key=[state.metric,state.curveGroup,state.curveSource,selectedKey].join('::');if(key===state.curveKey)return;
+    const key=[state.metric,state.curveGroup,state.curveSource,state.industryDimension,selectedKey].join('::');if(key===state.curveKey)return;
     const filtered=curvePopulation(),groups=groupingValues(state.curveGroup,filtered),allowed=new Set(groups);
     const population=state.curveSource==='all'?state.bonds.filter(bond=>allowed.has(groupKey(bond,state.curveGroup))):filtered;
     const options=state.curveSource==='all'?{minimumSamples:20,requireCoverage:true}:{minimumSamples:5,requireCoverage:false};
@@ -180,7 +190,7 @@
     const point=curvePoint(bond),active=metricLabel(),curveGroup=groupKey(bond,state.curveGroup),status=curveStatusText(curveGroup),flag=bond.flags.length?`<p class="flag">資料異常：${escapeHtml(bond.flags.join('、'))}</p>`:'';
     const curve=point?`${number(point.fitted,state.metric==='yield_pct'?3:2)}${metricUnit()}`:`n.a.${status?`（${escapeHtml(status)}）`:''}`,residual=point?`${point.residual>=0?'+':''}${number(point.residual,state.metric==='yield_pct'?3:2)}${metricUnit()}`:'n.a.';
     const source=state.curveSource==='all'?'全樣本':'已篩選標的';
-    return `<strong>${escapeHtml(bond.security_des)}</strong><div>${escapeHtml(bond.issuer)} · ${escapeHtml(bond.ticker)}</div><dl><dt>Yield</dt><dd>${number(bond.yield_pct,3)}%</dd><dt>OAS Spread</dt><dd>${number(bond.oas_bp,2)} bp</dd><dt>Maturity</dt><dd>${escapeHtml(bond.maturity)} (${number(bond.maturity_years,2)}Y)</dd><dt>信評／產業</dt><dd>${escapeHtml(bond.rating)} · ${escapeHtml(bond.industry)}</dd><dt>點位顏色</dt><dd>${groupLabels[state.pointGroup]} · ${escapeHtml(groupKey(bond,state.pointGroup))}</dd><dt>曲線分類</dt><dd>${groupLabels[state.curveGroup]} · ${escapeHtml(curveGroup)}</dd><dt>曲線母體</dt><dd>${source}</dd><dt>${active} curve</dt><dd>${curve}</dd><dt>${active} − curve</dt><dd>${residual}</dd></dl>${flag}`;
+    return `<strong>${escapeHtml(bond.security_des)}</strong><div>${escapeHtml(bond.issuer)} · ${escapeHtml(bond.ticker)}</div><dl><dt>Yield</dt><dd>${number(bond.yield_pct,3)}%</dd><dt>OAS Spread</dt><dd>${number(bond.oas_bp,2)} bp</dd><dt>Maturity</dt><dd>${escapeHtml(bond.maturity)} (${number(bond.maturity_years,2)}Y)</dd><dt>信評／產業</dt><dd>${escapeHtml(bond.rating)} · ${escapeHtml(bond.industry)}</dd><dt>Peer Group</dt><dd>${bond.peer_group?escapeHtml(bond.peer_group):'—'}</dd><dt>點位顏色</dt><dd>${groupLabels[state.pointGroup]} · ${escapeHtml(groupKey(bond,state.pointGroup))}</dd><dt>曲線分類</dt><dd>${groupLabels[state.curveGroup]} · ${escapeHtml(curveGroup)}</dd><dt>曲線母體</dt><dd>${source}</dd><dt>${active} curve</dt><dd>${curve}</dd><dt>${active} − curve</dt><dd>${residual}</dd></dl>${flag}`;
   }
   function showTooltip(bond,clientX,clientY,pin=false){state.selectedBond=bond;state.pinned=pin;const tip=elements['bond-tooltip'];tip.innerHTML=tooltipHtml(bond);tip.hidden=false;requestAnimationFrame(()=>{tip.style.left=`${Math.max(8,Math.min(innerWidth-tip.offsetWidth-8,clientX+12))}px`;tip.style.top=`${Math.max(8,Math.min(innerHeight-tip.offsetHeight-8,clientY-tip.offsetHeight-12))}px`;});draw();}
   function hideTooltip(force=false){if(state.pinned&&!force)return;elements['bond-tooltip'].hidden=true;if(force){state.pinned=false;state.selectedBond=null;draw();}}
@@ -189,7 +199,7 @@
   function renderTable(){
     const start=(state.page-1)*pageSize,rows=state.table.slice(start,start+pageSize),body=elements['bond-rows'];body.replaceChildren();
     for(const bond of rows){const point=curvePoint(bond),residual=point?.residual,tr=document.createElement('tr');tr.tabIndex=0;tr.dataset.id=bond.id;tr.setAttribute('aria-label',`${bond.security_des}，Yield ${number(bond.yield_pct,3)}%，OAS ${number(bond.oas_bp,2)} bp`);if(bond.id===state.selectedBond?.id){tr.classList.add('selected');tr.setAttribute('aria-selected','true');}
-      tr.innerHTML=`<td><strong>${escapeHtml(bond.security_des)}</strong>${bond.flags.length?'<span class="quality">異常</span>':''}<small>${escapeHtml(bond.id)}</small></td><td>${escapeHtml(bond.issuer)}<small>${escapeHtml(bond.industry)}</small></td><td>${escapeHtml(bond.ticker)}</td><td class="number">${escapeHtml(bond.maturity)}<small>${number(bond.maturity_years,2)}Y</small></td><td>${escapeHtml(bond.rating)}</td><td class="number">${number(bond.yield_pct,3)}%</td><td class="number">${number(bond.oas_bp,2)} bp</td><td class="number ${Number.isFinite(residual)?residual>=0?'positive':'negative':''}">${Number.isFinite(residual)?`${residual>=0?'+':''}${number(residual,state.metric==='yield_pct'?3:2)}${metricUnit()}`:'n.a.'}</td>`;
+      tr.innerHTML=`<td><strong>${escapeHtml(bond.security_des)}</strong>${bond.flags.length?'<span class="quality">異常</span>':''}<small>${escapeHtml(bond.id)}</small></td><td>${escapeHtml(bond.issuer)}<small>${escapeHtml(bond.industry)}${bond.peer_group?` · ${escapeHtml(bond.peer_group)}`:''}</small></td><td>${escapeHtml(bond.ticker)}</td><td class="number">${escapeHtml(bond.maturity)}<small>${number(bond.maturity_years,2)}Y</small></td><td>${escapeHtml(bond.rating)}</td><td class="number">${number(bond.yield_pct,3)}%</td><td class="number">${number(bond.oas_bp,2)} bp</td><td class="number ${Number.isFinite(residual)?residual>=0?'positive':'negative':''}">${Number.isFinite(residual)?`${residual>=0?'+':''}${number(residual,state.metric==='yield_pct'?3:2)}${metricUnit()}`:'n.a.'}</td>`;
       const open=event=>{const box=tr.getBoundingClientRect();showTooltip(bond,event.clientX||box.right,event.clientY||box.top,true);renderTable();};tr.addEventListener('click',open);tr.addEventListener('focus',()=>{const box=tr.getBoundingClientRect();showTooltip(bond,box.right,box.top,false);});tr.addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();open(event);}});tr.addEventListener('blur',()=>hideTooltip());body.append(tr);
     }
     document.querySelectorAll('.bond-table-card th[data-sort]').forEach(th=>{th.removeAttribute('aria-sort');if(th.dataset.sort===state.sort.key)th.setAttribute('aria-sort',state.sort.direction==='asc'?'ascending':'descending');});
@@ -222,17 +232,24 @@
     computeCurves();const visible=visibleBonds();state.table=sortedTable(visible);state.plot=visible;const pages=Math.max(1,Math.ceil(state.table.length/pageSize));state.page=Math.min(state.page,pages);
     if(resetDomain){state.baseDomain=domains(state.plot);state.domain={...state.baseDomain};}
     const anomalies=visible.filter(isOutlier).length,curveCount=[...state.eligibility.values()].filter(result=>result.status==='eligible').length;
-    elements['bond-status'].textContent=`顯示 ${visible.length.toLocaleString('en-US')} 檔；${curveCount} 條有效曲線；目前指標異常 ${anomalies.toLocaleString('en-US')} 檔`;
+    const unmapped=peerGroupingActive()?state.bonds.filter(bond=>!bond.peer_group).length:0;
+    elements['bond-status'].textContent=`顯示 ${visible.length.toLocaleString('en-US')} 檔；${curveCount} 條有效曲線；目前指標異常 ${anomalies.toLocaleString('en-US')} 檔${unmapped?`；Peer Group 模式排除 ${unmapped.toLocaleString('en-US')} 檔未分類`:''}`;
     elements['chart-title'].textContent=`Maturity × ${metricLabel()}`;elements['residual-heading'].querySelector('button').textContent=`${metricLabel()} − curve`;
     const sourceText=state.curveSource==='all'?'全樣本曲線只沿用目前可見分類':'曲線套用全部三層篩選';
-    elements['chart-subtitle'].textContent=`曲線依${groupLabels[state.curveGroup]}分類；${sourceText}。個券搜尋只影響點位與表格。${elements['show-outliers'].checked?'圖中包含異常值。':'異常值預設不顯示。'}`;
+    elements['chart-subtitle'].textContent=`曲線依${groupLabels[state.curveGroup]}分類；${sourceText}。個券搜尋只影響點位與表格。${peerGroupingActive()?'Peer Group 模式只顯示已分類債券。':''}${elements['show-outliers'].checked?'圖中包含異常值。':'異常值預設不顯示。'}`;
     renderLegend();renderTable();draw();
   }
   function scheduleRender(resetDomain=true){clearTimeout(state.renderTimer);state.renderTimer=setTimeout(()=>render(resetDomain),60);}
 
+  function syncDimensionView(){
+    const peer=state.industryDimension==='peer_group';
+    elements['industry-filter-title'].textContent=peer?'Peer Group':'產業';
+    document.querySelectorAll('[name=industry-dimension]').forEach(input=>{input.checked=input.value===state.industryDimension;});
+  }
+
   function initializeFilters(){
     state.filterOrder=['rating','industry','ticker'];state.selected={rating:new Set(state.bonds.filter(bond=>['AAA','AA','A','BBB'].includes(bond.band)).map(bond=>bond.rating)),industry:new Set(),ticker:new Set()};
-    state.pointGroup='band';state.curveGroup='band';state.curveSource='filtered';state.sort={key:'residual',direction:'desc'};elements['point-group'].value='band';elements['curve-group'].value='band';elements['curve-source'].value='filtered';elements['grouping-notice'].textContent='';syncCascadingFilters();state.curveKey='';
+    state.pointGroup='band';state.curveGroup='band';state.curveSource='filtered';state.industryDimension='industry';state.sort={key:'residual',direction:'desc'};elements['point-group'].value='band';elements['curve-group'].value='band';elements['curve-source'].value='filtered';elements['grouping-notice'].textContent='';syncDimensionView();syncCascadingFilters();state.curveKey='';
   }
 
   function moveFilter(name,direction){const index=state.filterOrder.indexOf(name),next=index+direction;if(next<0||next>=state.filterOrder.length)return;state.filterOrder.splice(index,1);state.filterOrder.splice(next,0,name);filterChanged();}
@@ -248,6 +265,7 @@
   const finishFilterDrag=event=>{if(!state.filterDrag||event.pointerId!==state.filterDrag.pointerId)return;for(const card of elements['filter-grid'].querySelectorAll('.filter-card'))card.classList.remove('dragging','drop-target');state.filterDrag=null;filterChanged();};
   elements['filter-grid'].addEventListener('pointerup',finishFilterDrag);elements['filter-grid'].addEventListener('pointercancel',finishFilterDrag);
   document.querySelectorAll('[data-list-search]').forEach(input=>input.addEventListener('input',()=>applyListSearch(input.dataset.listSearch)));
+  document.querySelectorAll('[name=industry-dimension]').forEach(input=>input.addEventListener('change',()=>{state.industryDimension=input.value;state.selected.industry=new Set();syncDimensionView();filterChanged(false);}));
 
   document.querySelectorAll('[name=bond-metric]').forEach(input=>input.addEventListener('change',()=>{state.metric=input.value;state.curveKey='';state.page=1;render();}));
   elements['point-group'].addEventListener('change',()=>{state.pointGroup=elements['point-group'].value;enforceGroupings(true);render(false);});

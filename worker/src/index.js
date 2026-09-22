@@ -127,10 +127,24 @@ function luacFlags(years, oas, bondYield) {
 }
 
 export function validateLuacSnapshot(data) {
-  if (!sameKeys(data, ['schema_version', 'date', 'columns', 'records']) || data.schema_version !== 1) throw new Error('LUAC 公開資料欄位不正確');
+  if (!sameKeys(data, ['schema_version', 'date', 'columns', 'peer_definitions', 'records']) || data.schema_version !== 2) throw new Error('LUAC 公開資料欄位不正確');
   if (!validIsoDate(data.date)) throw new Error('LUAC 資料日期不正確');
   if (!Array.isArray(data.columns) || data.columns.length !== LUAC_COLUMNS.length || data.columns.some((value, index) => value !== LUAC_COLUMNS[index])) throw new Error('LUAC 欄位順序不正確');
+  if (!Array.isArray(data.peer_definitions) || !data.peer_definitions.length) throw new Error('LUAC Peer Group 定義無效');
   if (!Array.isArray(data.records) || data.records.length < 1 || data.records.length > 20000) throw new Error('LUAC 債券筆數不正確');
+  const groups = new Set(), peerTickers = new Set();
+  for (const definition of data.peer_definitions) {
+    if (!definition || typeof definition !== 'object' || !sameKeys(definition, ['name', 'tickers'])) throw new Error('LUAC Peer Group 定義無效');
+    const name = definition.name;
+    if (typeof name !== 'string' || !name.trim() || name.length > 160 || groups.has(name)) throw new Error('LUAC Peer Group 定義無效');
+    if (!Array.isArray(definition.tickers) || !definition.tickers.length) throw new Error('LUAC Peer Group 定義無效');
+    groups.add(name);
+    for (const ticker of definition.tickers) {
+      if (typeof ticker !== 'string' || !ticker || ticker !== ticker.trim().toUpperCase() || ticker.length > 32) throw new Error('LUAC Peer Group 定義無效');
+      if (peerTickers.has(ticker)) throw new Error(`LUAC Peer Group ticker 重複：${ticker}`);
+      peerTickers.add(ticker);
+    }
+  }
   const ids = new Set();
   let anomalies = 0;
   for (const [index, row] of data.records.entries()) {

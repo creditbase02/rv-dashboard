@@ -74,7 +74,7 @@ class BloombergBridgeTests(unittest.TestCase):
 
     def test_comparison_reports_only_aggregate_thresholds(self):
         columns = ["id", "security_des", "issuer", "ticker", "maturity", "rating", "maturity_years", "oas_bp", "yield_pct", "industry", "flags"]
-        baseline = {"schema_version": 1, "date": "2026-09-16", "columns": columns, "records": [["ID1", "Bond", "Issuer", "TK", "2030-09-15", "A", 4, 100, 5, "Technology", []]]}
+        baseline = {"schema_version": 2, "date": "2026-09-16", "columns": columns, "peer_definitions": [{"name": "Banks", "tickers": ["TK"]}], "records": [["ID1", "Bond", "Issuer", "TK", "2030-09-15", "A", 4, 100, 5, "Technology", []]]}
         candidate = json.loads(json.dumps(baseline))
         candidate["records"][0][7] = 100.4
         candidate["records"][0][8] = 5.009

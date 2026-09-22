@@ -16,7 +16,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from luac_data import COLUMNS, quality_flags, validate_luac
+from luac_data import COLUMNS, SCHEMA_VERSION, quality_flags, validate_luac
+from peer_data import parse_peer_definitions
 
 FIELDS = {
     "security_des": "SECURITY_DES",
@@ -164,7 +165,7 @@ def resolve_bics_level1_field(blpapi, session) -> str:
     return matches.pop()
 
 
-def snapshot(records: dict[str, dict[str, object]], as_of: str) -> dict:
+def snapshot(records: dict[str, dict[str, object]], as_of: str, peer_definitions: list[dict[str, object]]) -> dict:
     rows = []
     for identifier, values in records.items():
         required = [values.get(field) for field in FIELDS.values()]
@@ -186,7 +187,13 @@ def snapshot(records: dict[str, dict[str, object]], as_of: str) -> dict:
             str(values[FIELDS["industry"]]),
             quality_flags(years, oas, bond_yield),
         ])
-    result = {"schema_version": 1, "date": as_of, "columns": list(COLUMNS), "records": rows}
+    result = {
+        "schema_version": SCHEMA_VERSION,
+        "date": as_of,
+        "columns": list(COLUMNS),
+        "peer_definitions": peer_definitions,
+        "records": rows,
+    }
     validate_luac(result)
     return result
 
@@ -224,6 +231,7 @@ def main() -> int:
     parser.add_argument("--as-of", default=date.today().isoformat())
     parser.add_argument("--snapshot-output", type=Path, help="Optional sanitized contract output; must be outside this repository")
     parser.add_argument("--compare", type=Path, help="Optional sanitized Excel JSON from the same session")
+    parser.add_argument("--peers", type=Path, help="Optional Peer Group workbook; defaults to the mapping inside --compare")
     args = parser.parse_args()
     diagnostic: dict[str, object] = {"connected": False, "reference_ok": False, "universe_ok": False, "count": 0, "required_field_coverage_pct": 0, "error_class": None}
     session = None
@@ -257,10 +265,14 @@ def main() -> int:
             output = args.snapshot_output.resolve()
             if output.is_relative_to(ROOT):
                 parser.error("Bloomberg snapshot output must be outside the repository")
-            candidate = snapshot(records, args.as_of)
+            baseline = json.loads(args.compare.read_text(encoding="utf-8")) if args.compare else {}
+            definitions = parse_peer_definitions(args.peers) if args.peers else baseline.get("peer_definitions")
+            if not definitions:
+                raise ValueError("Peer Group mapping is required; pass --peers or --compare")
+            candidate = snapshot(records, args.as_of, definitions)
             output.write_text(json.dumps(candidate, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
             if args.compare:
-                diagnostic["comparison"] = compare(candidate, json.loads(args.compare.read_text(encoding="utf-8")))
+                diagnostic["comparison"] = compare(candidate, baseline)
     except Exception as error:
         diagnostic["error_class"] = classify(error)
     finally:
