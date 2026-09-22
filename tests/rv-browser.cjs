@@ -346,8 +346,12 @@ async function runStaleSupply(browser,base,width=1440){
   assert.equal(await status.getAttribute('role'),'status');
   assert.equal(await page.locator('#ytd-value').innerText(),'—');
   assert.equal(await page.locator('#ytd-chart .supply-bar').count(),0);
-  await page.locator('#supply-status .reload-button').click();
-  await page.waitForFunction(()=>location.search.includes('refresh='));
+  const [refetch]=await Promise.all([
+    page.waitForResponse(response=>response.url().includes('assets/supply-data.json')),
+    page.locator('#supply-status .reload-button').click(),
+  ]);
+  await page.waitForURL(/refresh=/);
+  assert.equal(refetch.status(),200);
   assert.ok(hits>=2,`reload must refetch the snapshot (fetches=${hits})`);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/supply stale banner overflow`);
   assert.deepEqual(errors,[]);
