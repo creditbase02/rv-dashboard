@@ -4,7 +4,7 @@
 
 - 本 repository 只負責 `https://creditbase02.github.io/rv-dashboard/`。
 - `ib-knowledge-base` 是獨立 peer；本 repo 不得修改或發布它。
-- 私人來源位於 Review workspace。抽取程式只讀來源，僅將通過驗證的 `assets/rv-data.json` 與 `assets/luac-bonds.json` 寫入本 repo。
+- 私人來源位於 Review workspace。抽取程式只讀來源，僅將通過驗證的 `assets/rv-data.json`、`assets/luac-bonds.json` 與 `assets/supply-data.json` 寫入本 repo。
 - 稽核 JSON 必須寫到 repo 外；Excel、PPT、PDF、絕對路徑與來源雜湊不得公開。
 
 ## 每次開始工作
@@ -56,6 +56,25 @@ python scripts/probe_bloomberg_luac.py --known-security "<approved Bloomberg ID>
 
 診斷只輸出成功狀態、筆數、欄位覆蓋與錯誤分類。完整 universe、唯一 ID、必填欄位 100%，且同工作階段比對達 OAS ≤0.5 bp、Yield ≤0.01 個百分點前，不得接正式更新。
 
+### IG Supply 資料
+
+Supply 來源是獨立 `.xlsx`，必要欄位為 `BB ID`、`CUSIP`、`Ticker`、`Corp Ticker`、`Pricing Date`、`Tranche Size`、`Tenor`、`Ind Sector` 與 `BB Composite`。所有列都保留並計入，包括重複 CUSIP 與同日不同金額；公開品質摘要只保存重複 CUSIP 群組數，不保存逐券資料或完整異常明細。
+
+舊年份 Pricing Date 視為增額發行。抽取器會在 Excel 列位置中尋找距離最近、同 `Corp Ticker`、主年份有效日期的記錄；找不到候選或最近距離平手時整批拒絕。FRN 先依證券名稱辨識；固定券依數值 Tenor 分成 `≤5Y`、`>5Y–10Y`、`>10Y / Perpetual`，PERP 歸入最長桶，無法辨識則拒絕。
+
+Peer mapping 是含 `TICKER` 與 `Peer Group` 兩欄的選填 Excel。網頁未提供時沿用目前公開快照內的 mapping；有提供時會拒絕空值、公式與 ticker 衝突。命令列抽取範例：
+
+```sh
+python3 scripts/extract_supply.py <Supply.xlsx> \
+  --peers <Peer-Groups.xlsx> \
+  --output assets/supply-data.json \
+  --audit <repo之外>/supply-audit.json
+```
+
+公開 snapshot 只含日期、主年份、筆數、YTD／MTD 整數 USD、Industry／Rating／Tenor／Peer Group 彙總、12 個月總量與 Peer Group 堆疊、已定義群組的 ticker 彙總、mapping 與安全品質計數。自動更新允許同日更正，但日期不得早於正式站，且筆數與 YTD 金額相較前版都必須在 ±20% 內；超出時改走人工 PR。
+
+Supply 自動資料 PR 的安全條件為：作者等於 `RV_UPLOAD_APP_LOGIN`、branch 以 `automation/supply-data-` 開頭、label 為 `automated-supply-data`、diff 只有 `assets/supply-data.json`，且 Supply 快速 CI 通過。`SUPPLY_UPLOAD_ENABLED` 與網站 `supply_enabled` 是獨立開關。
+
 ### 人工抽取（含投影片 fallback）
 
 ```sh
@@ -98,6 +117,8 @@ python3 scripts/validate_fast_data.py \
 
 可信任的 LUAC 自動資料 PR 若只修改 `assets/luac-bonds.json`，同樣走輕量資料驗證：嚴格檢查 schema、11 欄、缺值、非有限數字、重複 ID、品質旗標、0Y–50Y 圖表可用資料、日期遞增、±20% 筆數、4 MiB 上限，以及建置後 asset、頁面日期與 manifest 一致。資料-only 更新不重跑 Playwright、LOWESS 模型與 Worker 單元測試；任何程式或第二個檔案的變更仍跑完整 CI。
 
+可信任的 Supply 自動資料 PR 若只修改 `assets/supply-data.json`，會執行 `scripts/validate_fast_supply.py`，檢查 compact schema、精確加總、Rating／Tenor／Peer 順序、12 個月 reconciliation、日期不得倒退、筆數與 YTD ±20%、256 KiB 上限，以及建置後 asset、Supply 頁日期與 `datasets.supply` 一致。同日更正可通過。
+
 任何程式碼、第二個檔案、不受信任作者／branch／label 的 PR 都走完整 CI：
 
 ```sh
@@ -111,13 +132,13 @@ python3 -m http.server 8766 --directory public
 pnpm run test:browser -- http://127.0.0.1:8766/
 ```
 
-完整 CI 必須通過 RV 與 LUAC schema、LOWESS、460 個摘要值、公開資料防洩漏、連結、manifest 與桌面／平板／手機 Playwright 測試。資料-only commit 合併至 `main` 後沿用快速驗證產生 Pages artifact；其他 `main` commit 仍走完整 CI。
+完整 CI 必須通過 RV、LUAC 與 Supply schema、LOWESS、精確加總、Excel fixture、公開資料防洩漏、連結、manifest 與桌面／平板／手機 Playwright 測試。資料-only commit 合併至 `main` 後沿用快速驗證產生 Pages artifact；其他 `main` commit 仍走完整 CI。
 
 ## 發布與回復
 
 - 推送 `codex/<task>` 並建立 PR；CI 通過後才合併 `main`。
 - GitHub Pages 僅部署 `main`，正式站與知識庫使用不同 workflow 及 concurrency group。
-- 發布後確認首頁、`bonds.html`、兩個公開資料 asset 與 `integration-manifest.json` 可讀。
+- 發布後確認首頁、`bonds.html`、`supply.html`、三個公開資料 asset 與 `integration-manifest.json` 可讀。
 - 發布失敗時不修改知識庫；修正原 PR 或 `git revert <merge-commit>` 建立回復 PR。
 
 ## 上傳服務 rollout 與回復
@@ -129,7 +150,7 @@ pnpm run test:browser -- http://127.0.0.1:8766/
 3. 設定 preview Worker 的 encrypted secrets：`UPLOAD_PASSWORD`、`SESSION_SECRET`、`GITHUB_APP_ID`、`GITHUB_APP_INSTALLATION_ID`、`GITHUB_APP_PRIVATE_KEY`。GitHub App 只安裝在 `rv-dashboard`。
 4. 以合成資料完成登入、PR、CI 測試；網站端 `assets/upload-config.json` 的 `enabled` 仍保持 `false`。
 5. 用當期四份 Excel 比較瀏覽器結果與 `extract_excel_strict.py` 結果一致。
-6. 最後才把 Worker `RV_UPLOAD_ENABLED` 與網站 config `enabled` 都切成 `true`，並經 PR 發布。
+6. 最後才把需要啟用的 Worker `RV_UPLOAD_ENABLED`／`LUAC_UPLOAD_ENABLED`／`SUPPLY_UPLOAD_ENABLED` 與網站對應 config 都切成 `true`，並經 PR 發布。
 
 失敗時依範圍回復：
 

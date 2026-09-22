@@ -7,6 +7,7 @@
   "vars": {
     "RV_UPLOAD_ENABLED": "true",
     "LUAC_UPLOAD_ENABLED": "true",
+    "SUPPLY_UPLOAD_ENABLED": "false",
     "PUBLISH_MODE": "production",
     "ALLOWED_ORIGINS": "https://creditbase02.github.io",
     "GITHUB_REPOSITORY": "creditbase02/rv-dashboard",

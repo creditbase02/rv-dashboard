@@ -11,7 +11,7 @@
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要內容</a>
-  <header class="site-header"><div class="nav-shell"><a class="brand" href="./">RV 相對價值</a><nav class="site-nav" aria-label="主要導覽"><a href="https://creditbase02.github.io/ib-knowledge-base/">券商報告知識庫</a><a href="./">RV 相對價值</a><a href="bonds.html">單券相對價值比較表</a><a href="update.html" aria-current="page">更新資料</a></nav></div></header>
+  <header class="site-header"><div class="nav-shell"><a class="brand" href="./">RV 相對價值</a><nav class="site-nav" aria-label="主要導覽"><a href="https://creditbase02.github.io/ib-knowledge-base/">券商報告知識庫</a><a href="./">RV 相對價值</a><a href="bonds.html">單券相對價值比較表</a><a href="supply.html">IG Supply</a><a href="update.html" aria-current="page">更新資料</a></nav></div></header>
   <main id="main-content" class="upload-shell">
     <p class="upload-kicker">LOCAL EXCEL VALIDATION</p>
     <h1>更新 RV 資料</h1>
@@ -57,9 +57,25 @@
       <div id="luac-publish-status" class="status neutral" role="status" aria-live="polite">尚未送出。</div>
     </section>
 
+    <section class="upload-card supply-upload" aria-labelledby="supply-upload-title">
+      <p class="upload-kicker">IG PRIMARY SUPPLY WORKBOOK</p>
+      <div class="section-heading"><div><h2 id="supply-upload-title">IG Supply 資料</h2><p>選取 Supply Excel；Peer Group Excel 可選，未選時沿用正式站現行 mapping。原始列不會上傳。</p></div><button id="clear-supply" class="button secondary" type="button">清除</button></div>
+      <div class="file-grid">
+        <label class="file-slot"><strong>Supply Excel</strong><span>必填</span><input id="supply-file" type="file" accept=".xlsx"><output id="supply-file-name">尚未選取</output></label>
+        <label class="file-slot"><strong>Peer Group Excel</strong><span>選填</span><input id="supply-peer-file" type="file" accept=".xlsx"><output id="supply-peer-file-name">沿用現行 mapping</output></label>
+      </div>
+      <div class="actions"><button id="validate-supply" class="button primary" type="button">在本機驗證</button></div>
+      <div id="supply-validation-status" class="status neutral" role="status" aria-live="polite">等待選取 Supply Excel。</div>
+      <dl id="supply-validation-summary" class="summary" hidden><div><dt>資料截止日</dt><dd id="supply-summary-date"></dd></div><div><dt>發行記錄</dt><dd id="supply-summary-count"></dd></div><div><dt>YTD</dt><dd id="supply-summary-ytd"></dd></div><div><dt>日期校正</dt><dd id="supply-summary-corrections"></dd></div><div><dt>重複 CUSIP 群組</dt><dd id="supply-summary-duplicates"></dd></div></dl>
+      <label class="password-field">上傳密碼<input id="supply-upload-password" type="password" autocomplete="current-password" disabled></label>
+      <div class="actions"><button id="publish-supply" class="button primary" type="button" disabled>開始更新 IG Supply</button></div>
+      <div id="supply-publish-status" class="status neutral" role="status" aria-live="polite">尚未送出。</div>
+    </section>
+
     <aside class="privacy-note"><strong>隱私保護</strong>：原始 Excel、檔名、路徑與來源雜湊不會傳送或保存。離開本頁後，瀏覽器記憶體內的解析結果會消失。</aside>
   </main>
   <script src="assets/luac-model.js?v={{UPDATE_VERSION}}" defer></script>
+  <script src="assets/supply-model.js?v={{UPDATE_VERSION}}" defer></script>
   <script src="assets/update.js?v={{UPDATE_VERSION}}" defer></script>
 </body>
 </html>

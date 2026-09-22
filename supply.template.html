@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="USD IG primary supply YTD, MTD, monthly and sector, rating, tenor, peer-group breakdowns.">
+  <title>IG Supply Dashboard</title>
+  <link rel="icon" href="data:,">
+  <link rel="canonical" href="https://creditbase02.github.io/rv-dashboard/supply.html">
+  <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/supply.css?v={{SUPPLY_VERSION}}">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳到主要內容</a>
+  <header class="site-header"><div class="nav-shell"><a class="brand" href="./">RV 相對價值</a><nav class="site-nav" aria-label="主要導覽"><a href="https://creditbase02.github.io/ib-knowledge-base/">券商報告知識庫</a><a href="./">RV 相對價值</a><a href="bonds.html">單券相對價值比較表</a><a href="supply.html" aria-current="page">IG Supply</a><a href="update.html">更新資料</a></nav></div></header>
+  <main id="main-content" class="supply-shell">
+    <header class="supply-heading"><div><p class="supply-kicker">INVESTMENT GRADE / PRIMARY SUPPLY</p><h1>IG Supply Dashboard</h1><p>USD Investment Grade primary issuance snapshot.</p></div><p class="supply-date">資料截止 <time datetime="{{SUPPLY_DATE_ISO}}">{{SUPPLY_DATE_DISPLAY}}</time><br><span>非即時行情</span></p></header>
+    <p id="supply-status" class="supply-status" role="status" aria-live="polite">正在載入資料…</p>
+    <section class="supply-kpis" aria-label="Issuance summary">
+      <article><p id="ytd-label">YTD Issuance</p><strong id="ytd-value">—</strong><small>USD billion</small></article>
+      <article><p id="mtd-label">MTD Issuance</p><strong id="mtd-value">—</strong><small>USD billion</small></article>
+      <article><p>Included records</p><strong id="row-count">—</strong><small id="quality-summary">Validated Excel rows</small></article>
+    </section>
+
+    <section class="supply-card" aria-labelledby="ytd-chart-title">
+      <header class="chart-heading"><div><p class="section-label">YTD BREAKDOWN</p><h2 id="ytd-chart-title">YTD Issuance</h2><p id="ytd-chart-subtitle">Ind Sector</p></div><button id="peer-back" class="supply-button secondary" type="button" hidden>返回 Peer Group</button></header>
+      <fieldset class="supply-segments"><legend class="sr-only">YTD grouping</legend><label><input type="radio" name="supply-group" value="industry" checked><span>Ind Sector</span></label><label><input type="radio" name="supply-group" value="rating"><span>BB Composite</span></label><label><input type="radio" name="supply-group" value="peer_group"><span>Peer Group</span></label></fieldset>
+      <div id="ytd-chart" class="supply-chart-scroll" tabindex="0" aria-label="YTD issuance bar chart"></div>
+      <p class="chart-help">Peer Group 模式可點選已定義群組查看 ticker；Others 僅顯示總量。</p>
+    </section>
+
+    <section class="supply-card" aria-labelledby="monthly-title">
+      <header class="chart-heading"><div><p class="section-label">MONTHLY ISSUANCE</p><h2 id="monthly-title">Issuance Volume by Month</h2><p>Jan–Dec · USD billion</p></div></header>
+      <fieldset class="supply-segments"><legend class="sr-only">Monthly grouping</legend><label><input type="radio" name="monthly-group" value="total" checked><span>All IG</span></label><label><input type="radio" name="monthly-group" value="peer"><span>Peer Group</span></label></fieldset>
+      <div id="monthly-legend" class="supply-legend" aria-label="Monthly chart legend"></div>
+      <div id="monthly-chart" class="supply-chart-scroll" tabindex="0" aria-label="Monthly issuance bar chart"></div>
+    </section>
+
+    <section class="breakdown-section" aria-labelledby="breakdown-title">
+      <div class="breakdown-heading"><p class="section-label">YTD TABLES</p><h2 id="breakdown-title">Issuance Breakdown</h2><p>每張表的發行量加總為 YTD，佔比加總為 100%。</p></div>
+      <div id="breakdown-tables" class="breakdown-grid"></div>
+    </section>
+    <aside class="supply-note"><h2>資料口徑</h2><p>YTD 與 MTD 以已驗證 Excel 內的 Pricing Date 與 Tranche Size 計算。增額發行沿用舊年份日期時，依工作表中列距離最近的同 ticker 當年發行日校正。重複 CUSIP 保留並全數計入。</p></aside>
+  </main>
+  <div id="supply-tooltip" class="supply-tooltip" role="tooltip" hidden></div>
+  <script src="assets/supply-model.js?v={{SUPPLY_VERSION}}" defer></script>
+  <script src="assets/supply.js?v={{SUPPLY_VERSION}}" defer></script>
+  <footer class="site-footer"><span>公開聚合版｜資料僅供研究參考，不構成投資建議。</span><span>內容來源：經驗證的 IG Primary Excel 快照</span></footer>
+</body>
+</html>

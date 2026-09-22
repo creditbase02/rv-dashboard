@@ -44,6 +44,7 @@ jobs:
           changed="$RUNNER_TEMP/rv-changed-files.txt"
           has_label=false
           has_luac_label=false
+          has_supply_label=false
           if [ "$EVENT_NAME" = "pull_request" ]; then
             gh pr diff "$PR_URL" --name-only > "$changed"
             base_sha="$PR_BASE_SHA"
@@ -52,7 +53,8 @@ jobs:
                 labels="$(gh pr view "$PR_URL" --json labels --jq '.labels[].name')"
                 if echo "$labels" | grep -Fxq automated-rv-data; then has_label=true; fi
                 if echo "$labels" | grep -Fxq automated-luac-data; then has_luac_label=true; fi
-                if [ "$has_label" = true ] || [ "$has_luac_label" = true ]; then
+                if echo "$labels" | grep -Fxq automated-supply-data; then has_supply_label=true; fi
+                if [ "$has_label" = true ] || [ "$has_luac_label" = true ] || [ "$has_supply_label" = true ]; then
                   break
                 fi
                 sleep 5
@@ -76,6 +78,8 @@ jobs:
           if [ "$has_label" = true ]; then label_option=(--has-label); fi
           luac_label_option=()
           if [ "$has_luac_label" = true ]; then luac_label_option=(--has-luac-label); fi
+          supply_label_option=()
+          if [ "$has_supply_label" = true ]; then supply_label_option=(--has-supply-label); fi
           mode="$(python3 scripts/ci_validation_mode.py \
             --event "$EVENT_NAME" \
             --actor "$ACTOR" \
@@ -84,12 +88,13 @@ jobs:
             --head-repo "$HEAD_REPO" \
             --repository "$REPOSITORY" \
             "${label_option[@]}" \
-            "${luac_label_option[@]}" < "$changed")"
+            "${luac_label_option[@]}" \
+            "${supply_label_option[@]}" < "$changed")"
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
           echo "Validation mode: $mode"
       - name: Build site for fast data validation
-        if: steps.validation.outputs.mode == 'data' || steps.validation.outputs.mode == 'luac-data'
+        if: steps.validation.outputs.mode == 'data' || steps.validation.outputs.mode == 'luac-data' || steps.validation.outputs.mode == 'supply-data'
         run: python3 publish.py --build-only
       - name: Validate automated data update
         if: steps.validation.outputs.mode == 'data'
@@ -116,6 +121,19 @@ jobs:
           python3 scripts/validate_fast_luac.py \
             --current assets/luac-bonds.json \
             --previous "$RUNNER_TEMP/luac-bonds-previous.json" \
+            --public-root public
+      - name: Validate automated Supply data update
+        if: steps.validation.outputs.mode == 'supply-data'
+        env:
+          BASE_SHA: ${{ steps.validation.outputs.base_sha }}
+        run: |
+          if ! git cat-file -e "$BASE_SHA:assets/supply-data.json" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          fi
+          git show "$BASE_SHA:assets/supply-data.json" > "$RUNNER_TEMP/supply-data-previous.json"
+          python3 scripts/validate_fast_supply.py \
+            --current assets/supply-data.json \
+            --previous "$RUNNER_TEMP/supply-data-previous.json" \
             --public-root public
       - uses: actions/setup-node@v4
         if: steps.validation.outputs.mode == 'full'
@@ -266,4 +284,53 @@ jobs:
             sleep 10
           done
           echo "Timed out waiting for LUAC auto-merge."
+          exit 1
+
+  auto-merge-supply-data:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'automated-supply-data' &&
+      vars.RV_UPLOAD_APP_LOGIN != '' &&
+      github.actor == vars.RV_UPLOAD_APP_LOGIN &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'automation/supply-data-') &&
+      contains(github.event.pull_request.labels.*.name, 'automated-supply-data')
+    needs: tests
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Require exactly one changed Supply data file
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr diff "$PR_URL" --name-only | python3 scripts/verify_supply_data_only_pr.py
+      - name: Enable verified Supply data auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: gh pr merge "$PR_URL" --auto --squash --delete-branch --match-head-commit "$HEAD_SHA"
+      - name: Wait for merge then trigger main deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          for attempt in $(seq 1 60); do
+            state="$(gh pr view "$PR_URL" --json state --jq .state)"
+            if [ "$state" = "MERGED" ]; then
+              gh workflow run pages.yml --ref main
+              exit 0
+            fi
+            if [ "$state" = "CLOSED" ]; then
+              echo "Supply data PR closed before merge."
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for Supply auto-merge."
           exit 1

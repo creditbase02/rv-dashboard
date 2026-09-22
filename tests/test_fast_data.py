@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.ci_validation_mode import validation_mode
 from scripts.validate_fast_data import validate_excel_snapshot, validate_fast_update
 from scripts.validate_fast_luac import validate_fast_luac
+from scripts.validate_fast_supply import validate_fast_supply
 
 
 class FastDataTests(unittest.TestCase):
@@ -50,6 +51,21 @@ class FastDataTests(unittest.TestCase):
         self.assertEqual(validation_mode("pull_request", path, **trusted), "luac-data")
         self.assertEqual(validation_mode("push", path), "luac-data")
         for override in ({"actor": "person"}, {"has_luac_label": False}, {"head_ref": "codex/manual"}):
+            self.assertEqual(validation_mode("pull_request", path, **{**trusted, **override}), "full")
+
+    def test_trusted_supply_pr_and_main_commit_use_fast_mode(self):
+        trusted = {
+            "actor": "rv-uploader[bot]",
+            "expected_actor": "rv-uploader[bot]",
+            "head_ref": "automation/supply-data-2026-09-17-abc",
+            "has_supply_label": True,
+            "head_repo": "owner/rv-dashboard",
+            "repository": "owner/rv-dashboard",
+        }
+        path = ["assets/supply-data.json"]
+        self.assertEqual(validation_mode("pull_request", path, **trusted), "supply-data")
+        self.assertEqual(validation_mode("push", path), "supply-data")
+        for override in ({"actor": "person"}, {"has_supply_label": False}, {"head_ref": "codex/manual"}):
             self.assertEqual(validation_mode("pull_request", path, **{**trusted, **override}), "full")
 
     def test_untrusted_or_multi_file_pr_uses_full_mode(self):
@@ -110,6 +126,15 @@ class FastDataTests(unittest.TestCase):
         broken["records"][0][8] = None
         with self.assertRaisesRegex(ValueError, "invalid numeric"):
             validate_fast_luac(broken, previous, ROOT / "assets" / "luac-bonds.json", ROOT / "public")
+
+    def test_fast_supply_validation_allows_same_day_and_rejects_large_drift(self):
+        current_path = ROOT / "assets" / "supply-data.json"
+        current = json.loads(current_path.read_text(encoding="utf-8"))
+        validate_fast_supply(current, copy.deepcopy(current), current_path, ROOT / "public")
+        drift = copy.deepcopy(current)
+        drift["row_count"] = current["row_count"] * 2
+        with self.assertRaisesRegex(ValueError, "20%"):
+            validate_fast_supply(drift, current, current_path, ROOT / "public")
 
 
 if __name__ == "__main__":
