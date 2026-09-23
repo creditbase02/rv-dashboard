@@ -58,6 +58,12 @@ class RVTests(unittest.TestCase):
         self.assertIn("IG Supply", update_page)
         self.assertRegex(update_page, r'assets/update\.js\?v=[0-9a-f]{10}')
 
+    def test_supply_upload_is_enabled_on_site_and_worker(self):
+        config = json.loads((ROOT / "assets" / "upload-config.json").read_text(encoding="utf-8"))
+        worker = (ROOT / "worker" / "wrangler.jsonc").read_text(encoding="utf-8")
+        self.assertTrue(config["supply_enabled"])
+        self.assertIn('"SUPPLY_UPLOAD_ENABLED": "true"', worker)
+
     def test_integration_manifest(self):
         manifest = json.loads((self.public / "integration-manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["site_id"], "rv-dashboard")
