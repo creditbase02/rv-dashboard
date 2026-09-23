@@ -6,9 +6,20 @@ import math
 from datetime import date
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 OTHER_IG = "Other IG"
-TENOR_BUCKETS = ("FRN", "≤5Y", ">5Y–10Y", ">10Y / Perpetual")
+TENOR_BUCKETS = (
+    "FRN",
+    "3yr & In (1.5–3.5yr)",
+    "5yr (3.5–6yr)",
+    "7yr (6–8yr)",
+    "10yr (8–12yr)",
+    "20yr (12–22yr)",
+    "30yr (22–32yr)",
+    ">32yr (>32yr)",
+    "Perpetual",
+)
+LEGACY_TENOR_BUCKETS = ("FRN", "≤5Y", ">5Y–10Y", ">10Y / Perpetual")
 RATING_ORDER = (
     "AAA", "AA+", "AA", "AA-", "A+", "A", "A-",
     "BBB+", "BBB", "BBB-", "BB+", "BB", "BB-", "B+", "B", "B-",
@@ -79,7 +90,7 @@ def _validate_top_pairs(value: object, field: str, denominator: int) -> None:
         raise ValueError(f"Supply {field} Top 5 order is invalid")
 
 
-def validate_supply(data: dict) -> dict[str, int]:
+def validate_supply(data: dict, *, allow_legacy: bool = True) -> dict[str, int]:
     expected = {
         "schema_version", "date", "year", "currency", "row_count",
         "ytd_usd", "mtd_usd", "breakdowns", "monthly", "peer_definitions",
@@ -87,7 +98,8 @@ def validate_supply(data: dict) -> dict[str, int]:
     }
     if not isinstance(data, dict) or set(data) != expected:
         raise ValueError("Unexpected Supply snapshot fields")
-    if data["schema_version"] != SCHEMA_VERSION or data["currency"] != "USD":
+    versions = {SCHEMA_VERSION, 2} if allow_legacy else {SCHEMA_VERSION}
+    if data["schema_version"] not in versions or data["currency"] != "USD":
         raise ValueError("Unexpected Supply schema")
     parsed_date = date.fromisoformat(data["date"])
     if not isinstance(data["year"], int) or data["year"] != parsed_date.year:
@@ -105,7 +117,8 @@ def validate_supply(data: dict) -> dict[str, int]:
     for field in ("industry", "rating", "tenor", "peer_group"):
         if _validate_pairs(breakdowns[field], field) != data["ytd_usd"]:
             raise ValueError(f"Supply {field} does not reconcile to YTD")
-    if [record[0] for record in breakdowns["tenor"]] != list(TENOR_BUCKETS):
+    tenor_buckets = LEGACY_TENOR_BUCKETS if data["schema_version"] == 2 else TENOR_BUCKETS
+    if [record[0] for record in breakdowns["tenor"]] != list(tenor_buckets):
         raise ValueError("Supply tenor bucket order is invalid")
     rating_positions = [RATING_ORDER.index(record[0]) if record[0] in RATING_ORDER else len(RATING_ORDER) for record in breakdowns["rating"]]
     if any(record[0] not in RATING_ORDER for record in breakdowns["rating"]) or rating_positions != sorted(rating_positions):

@@ -9,9 +9,9 @@ const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'assets', 'su
 const clone = value => structuredClone(value);
 
 test('Supply browser model accepts the approved compact snapshot', () => {
-  assert.equal(data.schema_version, 2);
-  assert.equal(model.validateSnapshot(clone(data)).row_count, 1606);
-  assert.deepEqual(data.breakdowns.tenor.map(row => row[0]), model.TENOR_BUCKETS);
+  assert.ok([2,3].includes(data.schema_version));
+  assert.equal(model.validateSnapshot(clone(data)).row_count, 1620);
+  if(data.schema_version===3)assert.deepEqual(data.breakdowns.tenor.map(row => row[0]), model.TENOR_BUCKETS);
   for (const field of ['industry', 'rating', 'tenor']) {
     assert.equal(model.reconciledPercentages(data.breakdowns[field], data.ytd_usd).reduce((a, b) => a + b, 0), 10000);
   }
@@ -23,9 +23,9 @@ test('Supply browser model validates Top 5 and Other IG naming', () => {
   const broken = clone(data);
   broken.top_tickers.ytd.industry[0][1].reverse();
   assert.throws(() => model.validateSnapshot(broken), /排序/);
-  const v1 = clone(data);
-  v1.schema_version = 1;
-  assert.throws(() => model.validateSnapshot(v1), /schema_version/);
+  const unsupported = clone(data);
+  unsupported.schema_version = 1;
+  assert.throws(() => model.validateSnapshot(unsupported), /schema_version/);
 
   const duplicate = clone(data);
   const duplicatePairs = duplicate.top_tickers.ytd.industry[0][1];

@@ -2,7 +2,8 @@ const METRICS = ['Spread', '10Y', '30Y', '10s30s'];
 const FIELDS = ['min', 'median', 'max', 'current', 'pct'];
 const LUAC_COLUMNS = ['id','security_des','issuer','ticker','maturity','rating','maturity_years','oas_bp','yield_pct','industry','flags'];
 const LUAC_FLAGS = ['yield_outlier','maturity_outlier','oas_outlier'];
-const SUPPLY_TENORS = ['FRN','≤5Y','>5Y–10Y','>10Y / Perpetual'];
+const SUPPLY_TENORS = ['FRN','3yr & In (1.5–3.5yr)','5yr (3.5–6yr)','7yr (6–8yr)','10yr (8–12yr)','20yr (12–22yr)','30yr (22–32yr)','>32yr (>32yr)','Perpetual'];
+const LEGACY_SUPPLY_TENORS = ['FRN','≤5Y','>5Y–10Y','>10Y / Perpetual'];
 const SUPPLY_RATINGS = ['AAA','AA+','AA','AA-','A+','A','A-','BBB+','BBB','BBB-','BB+','BB','BB-','B+','B','B-','CCC+','CCC','CCC-','CC','C','D','NR'];
 const OTHER_IG = 'Other IG';
 const SECTIONS = {
@@ -179,13 +180,14 @@ function validateSupplyTop(value, name, denominator) {
   if (value.some((row,index) => row[0] !== sorted[index][0] || row[1] !== sorted[index][1])) throw new Error(`Supply ${name} Top 5 排序不正確`);
 }
 
-export function validateSupplySnapshot(data) {
+export function validateSupplySnapshot(data, allowLegacy = false) {
   const fields = ['schema_version','date','year','currency','row_count','ytd_usd','mtd_usd','breakdowns','monthly','peer_definitions','peer_tickers','top_tickers','quality'];
-  if (!sameKeys(data, fields) || data.schema_version !== 2 || data.currency !== 'USD' || !validIsoDate(data.date) || data.year !== Number(data.date.slice(0, 4))) throw new Error('Supply 公開資料欄位不正確');
+  if (!sameKeys(data, fields) || (data.schema_version !== 3 && !(allowLegacy && data.schema_version === 2)) || data.currency !== 'USD' || !validIsoDate(data.date) || data.year !== Number(data.date.slice(0, 4))) throw new Error('Supply 公開資料欄位不正確');
   if (!Number.isInteger(data.row_count) || data.row_count < 1 || data.row_count > 100000 || !Number.isSafeInteger(data.ytd_usd) || data.ytd_usd <= 0 || !Number.isSafeInteger(data.mtd_usd) || data.mtd_usd < 0 || data.mtd_usd > data.ytd_usd) throw new Error('Supply 摘要數值無效');
   if (!sameKeys(data.breakdowns, ['industry','rating','tenor','peer_group'])) throw new Error('Supply breakdown 結構不正確');
   for (const name of ['industry','rating','tenor','peer_group']) if (validateSupplyPairs(data.breakdowns[name], name) !== data.ytd_usd) throw new Error(`Supply ${name} 無法勾稽 YTD`);
-  if (data.breakdowns.tenor.some((row, index) => row[0] !== SUPPLY_TENORS[index]) || data.breakdowns.tenor.length !== SUPPLY_TENORS.length) throw new Error('Supply Tenor 順序不正確');
+  const expectedTenors = data.schema_version === 2 ? LEGACY_SUPPLY_TENORS : SUPPLY_TENORS;
+  if (data.breakdowns.tenor.some((row, index) => row[0] !== expectedTenors[index]) || data.breakdowns.tenor.length !== expectedTenors.length) throw new Error('Supply Tenor 順序不正確');
   const ratingPositions = data.breakdowns.rating.map(row => { const index = SUPPLY_RATINGS.indexOf(row[0]); return index < 0 ? SUPPLY_RATINGS.length : index; });
   if (data.breakdowns.rating.some(row => !SUPPLY_RATINGS.includes(row[0])) || ratingPositions.some((value, index) => index && value < ratingPositions[index - 1])) throw new Error('Supply Rating 順序不正確');
   if (!sameKeys(data.monthly, ['total','peer_groups']) || !Array.isArray(data.monthly.total) || data.monthly.total.length !== 12 || data.monthly.total.some(value => !Number.isSafeInteger(value) || value < 0) || data.monthly.total.reduce((a,b) => a + b, 0) !== data.ytd_usd) throw new Error('Supply 月度總額無效');
@@ -326,7 +328,7 @@ async function publishData(env, data, definition) {
   const current = await githubFetch(env, `/repos/${repo}/contents/${definition.path}?ref=${encodeURIComponent(base)}`, {}, token);
   const encoded = current.content || (await githubFetch(env, `/repos/${repo}/git/blobs/${current.sha}`, {}, token)).content;
   const currentData = JSON.parse(decodeGithubContent(encoded));
-  definition.validate(currentData);
+  (definition.validateCurrent || definition.validate)(currentData);
   if (data.date < currentData.date || (data.date === currentData.date && !definition.allowSameDate)) {
     throw new Error(definition.allowSameDate
       ? `${definition.name} 資料日期 ${data.date} 不得早於正式站 ${currentData.date}`
@@ -408,7 +410,7 @@ export async function publishSupplySnapshot(env, data) {
   return publishData(env, data, {
     name: 'Supply', path: 'assets/supply-data.json', branch: 'supply-data', compact: true,
     productionLabel: 'automated-supply-data', previewLabel: 'supply-data-preview',
-    validate: value => validateSupplySnapshot(value), checkCurrent: checkSupplyDrift, allowSameDate: true,
+    validate: value => validateSupplySnapshot(value), validateCurrent: value => validateSupplySnapshot(value, true), checkCurrent: checkSupplyDrift, allowSameDate: true,
     summary: result => `Rows: ${result.rows}; date corrections: ${result.dateCorrections}; duplicate CUSIPs: ${result.duplicateCusips}`,
   });
 }
