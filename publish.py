@@ -76,6 +76,9 @@ def validate_public(output: Path) -> None:
         output / "assets" / "supply-model.js",
         output / "assets" / "supply.js",
         output / "assets" / "supply.css",
+        output / "assets" / "forecast-model.js",
+        output / "assets" / "forecast.js",
+        output / "assets" / "forecast.css",
         output / "update.html",
         output / "bonds.html",
         output / "supply.html",
@@ -103,8 +106,16 @@ def build() -> tuple[Path, dict]:
     supply = json.loads((ROOT / "assets" / "supply-data.json").read_text(encoding="utf-8"))
     validate_supply(supply)
     template = (ROOT / "index.template.html").read_text(encoding="utf-8")
+    forecast_version = asset_version(
+        ROOT / "assets" / "forecast-model.js",
+        ROOT / "assets" / "forecast.js",
+        ROOT / "assets" / "forecast.css",
+    )
+    forecast_manifest_url = config["peer"]["manifest_url"]
     page = template.replace("{{DATA_DATE_ISO}}", snapshot["date"]).replace(
         "{{DATA_DATE_DISPLAY}}", snapshot["date"].replace("-", "/")
+    ).replace("{{FORECAST_VERSION}}", forecast_version).replace(
+        "{{FORECAST_MANIFEST_URL}}", forecast_manifest_url
     )
     update_version = asset_version(
         ROOT / "assets" / "update.js",
@@ -117,13 +128,13 @@ def build() -> tuple[Path, dict]:
     luac_version = f"{luac['date']}-{asset_version(ROOT / 'assets' / 'luac-bonds.json', ROOT / 'assets' / 'bonds.js', ROOT / 'assets' / 'luac-model.js')}"
     bonds_page = bonds_template.replace("{{LUAC_DATE_ISO}}", luac["date"]).replace("{{LUAC_DATE_DISPLAY}}", luac["date"].replace("-", "/")).replace("{{LUAC_VERSION}}", luac_version)
     supply_version = f"{supply['date']}-{asset_version(ROOT / 'assets' / 'supply-data.json', ROOT / 'assets' / 'supply-model.js', ROOT / 'assets' / 'supply.js', ROOT / 'assets' / 'supply.css')}"
-    supply_page = (ROOT / "supply.template.html").read_text(encoding="utf-8").replace("{{SUPPLY_DATE_ISO}}", supply["date"]).replace("{{SUPPLY_DATE_DISPLAY}}", supply["date"].replace("-", "/")).replace("{{SUPPLY_VERSION}}", supply_version)
+    supply_page = (ROOT / "supply.template.html").read_text(encoding="utf-8").replace("{{SUPPLY_DATE_ISO}}", supply["date"]).replace("{{SUPPLY_DATE_DISPLAY}}", supply["date"].replace("-", "/")).replace("{{SUPPLY_VERSION}}", supply_version).replace("{{FORECAST_VERSION}}", forecast_version).replace("{{FORECAST_MANIFEST_URL}}", forecast_manifest_url)
     temporary = Path(tempfile.mkdtemp(prefix=".rv-public-", dir=ROOT))
     backup: Path | None = None
     try:
         assets = temporary / "assets"
         assets.mkdir()
-        for name in ("site.css", "rv.css", "rv.js", "bonds.css", "bonds.js", "luac-model.js", "supply.css", "supply.js", "supply-model.js", "update.css", "update.js", "upload-config.json", "rv-data.json", "luac-bonds.json", "supply-data.json"):
+        for name in ("site.css", "rv.css", "rv.js", "bonds.css", "bonds.js", "luac-model.js", "supply.css", "supply.js", "supply-model.js", "forecast.css", "forecast.js", "forecast-model.js", "update.css", "update.js", "upload-config.json", "rv-data.json", "luac-bonds.json", "supply-data.json"):
             shutil.copy2(ROOT / "assets" / name, assets / name)
         (temporary / "index.html").write_text(page, encoding="utf-8")
         (temporary / "update.html").write_text(update_page, encoding="utf-8")
