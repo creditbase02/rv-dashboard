@@ -56,14 +56,22 @@ def tenor_bucket(security: str, tenor: object, row: int) -> str:
     if "FLOAT" in upper or re.search(r"\bFRN\b", upper):
         return "FRN"
     if "PERP" in upper:
-        return ">10Y / Perpetual"
+        return "Perpetual"
     if not isinstance(tenor, (int, float)) or isinstance(tenor, bool) or not math.isfinite(tenor) or tenor <= 0:
         raise ValueError(f"Supply row {row} has invalid Tenor")
-    if tenor <= 5:
-        return "≤5Y"
-    if tenor <= 10:
-        return ">5Y–10Y"
-    return ">10Y / Perpetual"
+    if tenor <= 3.5:
+        return "3yr & In (1.5–3.5yr)"
+    if tenor <= 6:
+        return "5yr (3.5–6yr)"
+    if tenor <= 8:
+        return "7yr (6–8yr)"
+    if tenor <= 12:
+        return "10yr (8–12yr)"
+    if tenor <= 22:
+        return "20yr (12–22yr)"
+    if tenor <= 32:
+        return "30yr (22–32yr)"
+    return ">32yr (>32yr)"
 
 
 def normalize_rating(value: object) -> str:

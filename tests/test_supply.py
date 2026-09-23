@@ -10,10 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.extract_supply import extract
+from scripts.extract_supply import extract, tenor_bucket
 from scripts.validate_fast_supply import validate_fast_supply
 from scripts.verify_supply_data_only_pr import verify as verify_supply_data_only_pr
-from supply_data import MAX_PUBLISH_BYTES, RATING_ORDER, TENOR_BUCKETS, reconciled_percentages, validate_supply
+from supply_data import LEGACY_TENOR_BUCKETS, MAX_PUBLISH_BYTES, RATING_ORDER, TENOR_BUCKETS, reconciled_percentages, validate_supply
 from tests.make_supply_fixture import make_fixture
 
 
@@ -47,12 +47,12 @@ class SupplyTests(unittest.TestCase):
 
     def test_initial_snapshot_matches_approved_acceptance_values(self):
         result = validate_supply(self.data)
-        self.assertEqual(self.data["schema_version"], 2)
-        self.assertEqual(self.data["date"], "2026-09-17")
+        self.assertIn(self.data["schema_version"], (2, 3))
+        self.assertEqual(self.data["date"], "2026-09-21")
         self.assertEqual(self.data["year"], 2026)
-        self.assertEqual(self.data["row_count"], 1606)
-        self.assertEqual(self.data["ytd_usd"], 1_618_625_719_000)
-        self.assertEqual(self.data["mtd_usd"], 129_300_000_000)
+        self.assertEqual(self.data["row_count"], 1620)
+        self.assertEqual(self.data["ytd_usd"], 1_628_675_719_000)
+        self.assertEqual(self.data["mtd_usd"], 139_350_000_000)
         self.assertEqual(result["date_corrections"], 5)
         self.assertEqual(result["duplicate_cusip_groups"], 12)
         self.assertLess(self.data_path.stat().st_size, MAX_PUBLISH_BYTES)
@@ -81,8 +81,9 @@ class SupplyTests(unittest.TestCase):
         for name in ("industry", "rating", "tenor", "peer_group"):
             self.assertEqual(sum(value for _, value in self.data["breakdowns"][name]), self.data["ytd_usd"])
             self.assertEqual(sum(reconciled_percentages(self.data["breakdowns"][name], self.data["ytd_usd"])), 10_000)
+        tenor_buckets = LEGACY_TENOR_BUCKETS if self.data["schema_version"] == 2 else TENOR_BUCKETS
         self.assertEqual(self.data["breakdowns"]["tenor"], [
-            [name, dict(self.data["breakdowns"]["tenor"])[name]] for name in TENOR_BUCKETS
+            [name, dict(self.data["breakdowns"]["tenor"])[name]] for name in tenor_buckets
         ])
         positions = [RATING_ORDER.index(name) if name in RATING_ORDER else len(RATING_ORDER) for name, _ in self.data["breakdowns"]["rating"]]
         self.assertEqual(positions, sorted(positions))
@@ -102,10 +103,33 @@ class SupplyTests(unittest.TestCase):
         self.assertEqual(len(audit["date_corrections"]), 5)
         self.assertEqual(dict(data["breakdowns"]["tenor"]), {
             "FRN": 100_000_000,
-            "≤5Y": 500_000_000,
-            ">5Y–10Y": 300_000_000,
-            ">10Y / Perpetual": 400_000_000,
+            "3yr & In (1.5–3.5yr)": 300_000_000,
+            "5yr (3.5–6yr)": 200_000_000,
+            "7yr (6–8yr)": 200_000_000,
+            "10yr (8–12yr)": 100_000_000,
+            "20yr (12–22yr)": 200_000_000,
+            "30yr (22–32yr)": 100_000_000,
+            ">32yr (>32yr)": 0,
+            "Perpetual": 100_000_000,
         })
+
+    def test_tenor_bucket_boundaries_keep_frn_and_ticker_perpetual(self):
+        cases = (
+            ("ABC FRN 2030", "bad", "FRN"),
+            ("ABC PERP", "bad", "Perpetual"),
+            ("ABC", 3.5, "3yr & In (1.5–3.5yr)"),
+            ("ABC", 6, "5yr (3.5–6yr)"),
+            ("ABC", 8, "7yr (6–8yr)"),
+            ("ABC", 12, "10yr (8–12yr)"),
+            ("ABC", 22, "20yr (12–22yr)"),
+            ("ABC", 32, "30yr (22–32yr)"),
+            ("ABC", 32.01, ">32yr (>32yr)"),
+        )
+        for security, tenor, expected in cases:
+            with self.subTest(tenor=tenor):
+                self.assertEqual(tenor_bucket(security, tenor, 2), expected)
+        with self.assertRaisesRegex(ValueError, "invalid Tenor"):
+            tenor_bucket("ABC", "#N/A Field Not Applicable", 2)
 
     def test_fixture_rejects_ambiguous_or_invalid_workbooks(self):
         cases = (

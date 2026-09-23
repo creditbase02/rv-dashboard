@@ -61,7 +61,7 @@ python scripts/probe_bloomberg_luac.py --known-security "<approved Bloomberg ID>
 
 Supply 來源是獨立 `.xlsx`，必要欄位為 `BB ID`、`CUSIP`、`Ticker`、`Corp Ticker`、`Pricing Date`、`Tranche Size`、`Tenor`、`Ind Sector` 與 `BB Composite`。所有列都保留並計入，包括重複 CUSIP 與同日不同金額；公開品質摘要只保存重複 CUSIP 群組數，不保存逐券資料或完整異常明細。
 
-舊年份 Pricing Date 視為增額發行。抽取器會在 Excel 列位置中尋找距離最近、同 `Corp Ticker`、主年份有效日期的記錄；找不到候選或最近距離平手時整批拒絕。FRN 先依證券名稱辨識；固定券依數值 Tenor 分成 `≤5Y`、`>5Y–10Y`、`>10Y / Perpetual`，PERP 歸入最長桶，無法辨識則拒絕。
+舊年份 Pricing Date 視為增額發行。抽取器會在 Excel 列位置中尋找距離最近、同 `Corp Ticker`、主年份有效日期的記錄；找不到候選或最近距離平手時整批拒絕。FRN 先依 `Ticker` 欄的 `FLOAT`／`FRN` 標記辨識，PERP 只依 `Ticker` 欄的 `PERP` 標記歸入 `Perpetual`；其餘固定券依數值 Tenor 分成 3yr & In、5yr、7yr、10yr、20yr、30yr 與 >32yr，無法辨識則拒絕。
 
 Peer mapping 是含 `TICKER` 與 `Peer Group` 兩欄的選填 Excel。網頁未提供時沿用目前公開快照內的 mapping；有提供時會拒絕空值、公式與 ticker 衝突。命令列抽取範例：
 
@@ -72,7 +72,7 @@ python3 scripts/extract_supply.py <Supply.xlsx> \
   --audit <repo之外>/supply-audit.json
 ```
 
-公開 Supply schema v2 只含日期、主年份、筆數、YTD／MTD 整數 USD、Industry／Rating／Tenor／Peer Group 彙總、12 個月總量與 Peer Group 堆疊、已定義群組的 ticker 彙總、各分類與月份最多五筆的聚合 ticker、mapping 與安全品質計數。未定義群組統一命名為 `Other IG`。自動更新允許同日更正，但日期不得早於正式站，且筆數與 YTD 金額相較前版都必須在 ±20% 內；超出時改走人工 PR。
+公開 Supply schema v3 只含日期、主年份、筆數、YTD／MTD 整數 USD、Industry／Rating／Tenor／Peer Group 彙總、12 個月總量與 Peer Group 堆疊、已定義群組的 ticker 彙總、各分類與月份最多五筆的聚合 ticker、mapping 與安全品質計數。未定義群組統一命名為 `Other IG`。自動更新允許同日更正，但日期不得早於正式站，且筆數與 YTD 金額相較前版都必須在 ±20% 內；超出時改走人工 PR。
 
 Supply 自動資料 PR 的安全條件為：作者等於 `RV_UPLOAD_APP_LOGIN`、branch 以 `automation/supply-data-` 開頭、label 為 `automated-supply-data`、diff 只有 `assets/supply-data.json`，且 Supply 快速 CI 通過。`SUPPLY_UPLOAD_ENABLED` 與網站 `supply_enabled` 是獨立開關，目前兩者均已啟用。可信任的 Supply 單檔更新只跑快速資料格式與發布一致性驗證，不重跑完整網站、Worker 或瀏覽器測試。
 

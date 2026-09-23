@@ -65,12 +65,12 @@ function supplySnapshot(date = '2026-09-17', rowCount = 10, ytd = 1000) {
   groupBMonths[0] = [['BBB', second]];
   otherMonths[0] = [['OTHER', others]];
   return {
-    schema_version: 2, date, year: Number(date.slice(0, 4)), currency: 'USD',
+    schema_version: 3, date, year: Number(date.slice(0, 4)), currency: 'USD',
     row_count: rowCount, ytd_usd: ytd, mtd_usd: ytd,
     breakdowns: {
       industry: [['Finance', ytd]],
       rating: [['A', first], ['BBB', ytd - first]],
-      tenor: [['FRN', 0], ['≤5Y', first], ['>5Y–10Y', second], ['>10Y / Perpetual', others]],
+      tenor: [['FRN', 0], ['3yr & In (1.5–3.5yr)', first], ['5yr (3.5–6yr)', second], ['7yr (6–8yr)', 0], ['10yr (8–12yr)', 0], ['20yr (12–22yr)', 0], ['30yr (22–32yr)', 0], ['>32yr (>32yr)', 0], ['Perpetual', others]],
       peer_group: [['Group A', first], ['Group B', second], ['Other IG', others]],
     },
     monthly: {
@@ -164,7 +164,12 @@ test('strict Supply snapshot validates exact reconciliation and safe metadata', 
   const provenance = {...supplySnapshot(), source_file: 'private.xlsx'};
   assert.throws(() => validateSupplySnapshot(provenance), /欄位不正確/);
   assert.throws(() => validateSupplySnapshot({...supplySnapshot(), date: '2026-02-31'}), /欄位不正確/);
-  assert.throws(() => validateSupplySnapshot({...supplySnapshot(), schema_version: 1}), /欄位不正確/);
+  for (const schema_version of [1, 2]) assert.throws(() => validateSupplySnapshot({...supplySnapshot(), schema_version}), /欄位不正確/);
+  const legacy = supplySnapshot();
+  legacy.schema_version = 2;
+  const total = legacy.ytd_usd, first = Math.floor(total * 0.4), second = Math.floor(total * 0.2);
+  legacy.breakdowns.tenor = [['FRN', 0], ['≤5Y', first], ['>5Y–10Y', second], ['>10Y / Perpetual', total - first - second]];
+  assert.deepEqual(validateSupplySnapshot(legacy, true), {rows: 10, dateCorrections: 5, duplicateCusips: 2});
 });
 
 test('Supply Top 5 rejects duplicates, disorder, and per-security payloads', () => {
