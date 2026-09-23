@@ -4,6 +4,21 @@ const {mkdtempSync,readFileSync,rmSync,writeFileSync} = require('node:fs');
 const {tmpdir} = require('node:os');
 const {join} = require('node:path');
 
+const FORECAST_MANIFEST='https://creditbase02.github.io/ib-knowledge-base/integration-manifest.json';
+const FORECAST_FEED='https://creditbase02.github.io/ib-knowledge-base/forecast-calls.json';
+const forecastCalls=[
+  {broker:'BofA',asset:'US IG',type:'Overweight Sector',call:'Utilities',target_date:'',call_date:'2026-09-11',as_of_date:'2026-09-18',status:'Carried',note:'Sector view',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
+  {broker:'BofA',asset:'US IG',type:'Underweight Sector',call:'Health Care',target_date:'',call_date:'2026-09-11',as_of_date:'2026-09-18',status:'Carried',note:'Sector view',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
+  {broker:'BofA',asset:'US IG',type:'Gross Supply',call:'$2.1Tn',target_date:'2026',call_date:'2026-08-14',as_of_date:'2026-09-18',status:'Carried',note:'Annual forecast',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
+  {broker:'BofA',asset:'US IG',type:'Hyperscaler Issuance',call:'$330Bn',target_date:'2026',call_date:'2026-09-18',as_of_date:'2026-09-18',status:'Latest',note:'Annual forecast',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
+];
+const forecastFeed={schema_version:1,site_id:'ib-knowledge-base',content_as_of:'2026-09-18',reference_year:2026,source_url:'https://creditbase02.github.io/ib-knowledge-base/forecast/',calls:forecastCalls};
+const forecastManifest={schema_version:1,site_id:'ib-knowledge-base',production_url:'https://creditbase02.github.io/ib-knowledge-base/',validation_status:'PASS',datasets:{forecast:{asset:'forecast-calls.json',schema_version:1,content_as_of:'2026-09-18',sha256:'a'.repeat(64)}}};
+async function routeForecast(page,{missing=false,feedStatus=200}={}){
+  await page.route(`${FORECAST_MANIFEST}*`,route=>route.fulfill({contentType:'application/json',body:JSON.stringify(missing?{...forecastManifest,datasets:{}}:forecastManifest)}));
+  await page.route(`${FORECAST_FEED}*`,route=>route.fulfill({status:feedStatus,contentType:'application/json',body:feedStatus===200?JSON.stringify(forecastFeed):'{}'}));
+}
+
 async function run(browser, base, width = 1440) {
   const context = await browser.newContext({viewport:{width,height:1000},hasTouch:width<650});
   const page = await context.newPage();
@@ -11,6 +26,7 @@ async function run(browser, base, width = 1440) {
   page.on('pageerror',e=>errors.push(e.message));
   page.on('console',m=>{if(m.type()==='error') errors.push(m.text());});
   page.on('response',r=>{if(r.status()>=400) errors.push(`${r.status()} ${r.url()}`);});
+  await routeForecast(page);
   await page.goto(base);
   await page.waitForSelector('.rv-point');
   assert.equal(await page.locator('[name=section]:checked').inputValue(),'Overview');
@@ -63,6 +79,10 @@ async function run(browser, base, width = 1440) {
   }
   const peerHref = await page.getByRole('link',{name:'返回券商報告知識庫'}).getAttribute('href');
   assert.equal(peerHref,'https://creditbase02.github.io/ib-knowledge-base/');
+  await page.locator('[data-forecast-view=sectors]:not([hidden])').waitFor();
+  assert.equal(await page.locator('.forecast-broker-card').count(),1);
+  assert.match(await page.locator('.forecast-broker-card').innerText(),/Utilities/);
+  assert.match(await page.locator('.forecast-broker-card').innerText(),/Health Care/);
   assert.deepEqual(errors,[]);
   await context.close();
   return {width,combinations};
@@ -263,6 +283,7 @@ async function runSupply(browser,base,width=1440){
   page.on('pageerror',error=>errors.push(error.message));
   page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
   page.on('response',response=>{if(response.status()>=400)errors.push(`${response.status()} ${response.url()}`);});
+  await routeForecast(page);
   await page.goto(base+'supply.html');
   await page.waitForFunction(()=>document.querySelector('#supply-status')?.textContent.includes('公開聚合快照'));
   const data=await (await page.request.get(base+'assets/supply-data.json')).json();
@@ -278,6 +299,10 @@ async function runSupply(browser,base,width=1440){
   assert.equal(await page.locator('#mtd-value').innerText(),`$${billion(data.mtd_usd)}`);
   assert.equal(await page.locator('#mtd-value').innerText(),'$139');
   assert.equal(await page.locator('#ytd-top-tickers').isHidden(),true);
+  await page.locator('[data-forecast-view=supply]:not([hidden])').waitFor();
+  assert.equal(await page.locator('[data-forecast-year]').innerText(),'2026');
+  assert.match(await page.locator('.forecast-table').innerText(),/\$2\.1Tn/);
+  assert.match(await page.locator('.forecast-table').innerText(),/\$330Bn/);
 
   const industryName=data.breakdowns.industry[0][0],industryTop=Object.fromEntries(data.top_tickers.ytd.industry)[industryName];
   assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'industry');
@@ -380,6 +405,22 @@ async function runSupply(browser,base,width=1440){
   return {width,supplyRows:data.row_count};
 }
 
+async function runForecastFallbacks(browser,base){
+  let context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage();
+  await routeForecast(page,{missing:true});
+  await page.goto(base);await page.waitForSelector('.rv-point');
+  assert.equal(await page.locator('[data-forecast-feed]').isHidden(),true,'missing additive dataset must preserve the old UI');
+  await context.close();
+
+  context=await browser.newContext({viewport:{width:1440,height:1000}});page=await context.newPage();
+  await routeForecast(page,{feedStatus:503});
+  await page.goto(base);await page.waitForSelector('.rv-point');
+  await page.locator('.forecast-retry').waitFor();
+  assert.match(await page.locator('[data-forecast-status]').innerText(),/HTTP 503/);
+  assert.ok(await page.locator('.rv-point').count()>0,'forecast failure must not break RV charts');
+  await context.close();
+}
+
 async function runStaleSupply(browser,base,width=1440){
   const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width<650});
   const page=await context.newPage(),errors=[];
@@ -412,7 +453,7 @@ async function runStaleSupply(browser,base,width=1440){
   return {width,staleBanner:true};
 }
 
-module.exports={run,runBonds,runSupply,runStaleSupply};
+module.exports={run,runBonds,runSupply,runStaleSupply,runForecastFallbacks};
 
 const FILES = {
   Spread:'2Y Percentile RV.xlsx',
@@ -619,6 +660,7 @@ if(require.main===module) (async()=>{
     for(const width of [1440,768,375]) console.log(await run(browser,base,width));
     for(const width of [1440,768,375]) console.log(await runBonds(browser,base,width));
     for(const width of [1440,768,375]) console.log(await runSupply(browser,base,width));
+    await runForecastFallbacks(browser,base);
     console.log(await runStaleSupply(browser,base,1440));
     const currentDate=JSON.parse(readFileSync('assets/rv-data.json','utf8')).date;
     const nextDate=new Date(`${currentDate}T00:00:00Z`);nextDate.setUTCDate(nextDate.getUTCDate()+1);

@@ -9,6 +9,7 @@
   <link rel="canonical" href="https://creditbase02.github.io/rv-dashboard/supply.html">
   <link rel="stylesheet" href="assets/site.css">
   <link rel="stylesheet" href="assets/supply.css?v={{SUPPLY_VERSION}}">
+  <link rel="stylesheet" href="assets/forecast.css?v={{FORECAST_VERSION}}">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -21,6 +22,7 @@
       <article><p id="mtd-label">MTD Issuance</p><strong id="mtd-value">—</strong><small>USD billion</small></article>
       <article><p>Included records</p><strong id="row-count">—</strong><small id="quality-summary">Validated Excel rows</small></article>
     </section>
+    <section class="forecast-runtime" data-forecast-feed data-forecast-view="supply" data-forecast-manifest="{{FORECAST_MANIFEST_URL}}" hidden aria-labelledby="supply-forecast-title"><header class="forecast-heading"><div><p class="section-label">BROKER FORECAST / US IG</p><h2 id="supply-forecast-title"><span data-forecast-year></span> 券商年度供給預估</h2><p>Annual gross supply 與 hyperscaler issuance house calls；不同口徑不加總。</p></div><a data-forecast-tracker href="https://creditbase02.github.io/ib-knowledge-base/forecast/">完整 Forecast Tracker →</a></header><p class="forecast-status" data-forecast-status role="status" aria-live="polite"></p><div data-forecast-body></div></section>
 
     <section class="supply-card" aria-labelledby="ytd-chart-title">
       <header class="chart-heading"><div><p class="section-label">YTD BREAKDOWN</p><h2 id="ytd-chart-title">YTD Issuance</h2><p id="ytd-chart-subtitle">Ind Sector</p></div><button id="peer-back" class="supply-button secondary" type="button" hidden>返回 Peer Group</button></header>
@@ -47,6 +49,8 @@
   <div id="supply-tooltip" class="supply-tooltip" role="tooltip" hidden></div>
   <script src="assets/supply-model.js?v={{SUPPLY_VERSION}}" defer></script>
   <script src="assets/supply.js?v={{SUPPLY_VERSION}}" defer></script>
+  <script src="assets/forecast-model.js?v={{FORECAST_VERSION}}" defer></script>
+  <script src="assets/forecast.js?v={{FORECAST_VERSION}}" defer></script>
   <footer class="site-footer"><span>公開聚合版｜資料僅供研究參考，不構成投資建議。</span><span>內容來源：經驗證的 IG Primary Excel 快照</span></footer>
 </body>
 </html>

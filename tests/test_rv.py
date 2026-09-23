@@ -52,6 +52,9 @@ class RVTests(unittest.TestCase):
         self.assertIn('href="update.html"', page)
         self.assertIn('href="bonds.html"', page)
         self.assertIn('href="supply.html"', page)
+        self.assertIn('data-forecast-view="sectors"', page)
+        self.assertIn("assets/forecast-model.js", page)
+        self.assertIn("assets/forecast.js", page)
         update_page = (self.public / "update.html").read_text(encoding="utf-8")
         self.assertIn("四份 Excel", update_page)
         self.assertIn("LUAC", update_page)
@@ -74,6 +77,18 @@ class RVTests(unittest.TestCase):
         self.assertEqual(manifest["datasets"]["supply"]["asset"], "assets/supply-data.json")
         self.assertEqual(manifest["validation_status"], "PASS")
         validate_peer({**manifest, "site_id": "ib-knowledge-base"}, "ib-knowledge-base")
+
+    def test_forecast_runtime_assets_and_peer_discovery(self):
+        home = (self.public / "index.html").read_text(encoding="utf-8")
+        supply = (self.public / "supply.html").read_text(encoding="utf-8")
+        expected = "https://creditbase02.github.io/ib-knowledge-base/integration-manifest.json"
+        for page in (home, supply):
+            self.assertIn(f'data-forecast-manifest="{expected}"', page)
+            self.assertRegex(page, r"assets/forecast\.js\?v=[0-9a-f]{10}")
+            self.assertRegex(page, r"assets/forecast-model\.js\?v=[0-9a-f]{10}")
+        self.assertIn('data-forecast-view="supply"', supply)
+        for name in ("forecast-model.js", "forecast.js", "forecast.css"):
+            self.assertTrue((self.public / "assets" / name).is_file())
 
     def test_data_assets_are_versioned_by_snapshot_date(self):
         page = (self.public / "index.html").read_text(encoding="utf-8")
