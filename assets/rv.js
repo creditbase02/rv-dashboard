@@ -4,13 +4,26 @@
   const ns = 'http://www.w3.org/2000/svg';
   const colors = {Spread:'#178995','10Y':'#3269b1','30Y':'#8054ab','10s30s':'#9b6833'};
   const labels = {min:'Min',median:'Median',max:'Max',current:'目前值',pct:'Percentile'};
-  let data;
+  let data,forecastSectors=new Map();
   const finite = v => typeof v === 'number' && Number.isFinite(v);
   const number = v => new Intl.NumberFormat('en-US',{maximumFractionDigits:6}).format(v);
   const format = (r,f) => !finite(r[f]) ? '缺值' : `${r.sources[f]==='投影片' && f!=='pct' ? '約 ' : ''}${number(r[f]*(f==='pct'?100:1))}${f==='pct'?'%':' bp'}`;
+  const brokerSummary = sector => {
+    const row=forecastSectors.get(sector);
+    return row ? ` · 券商 OW ${row.overweight.length} 家／UW ${row.underweight.length} 家` : '';
+  };
   const tooltipText = (r,metric,field) => ['min','max'].includes(field)
     ? `${r.sector} · ${metric} 2Y Min–Max：${format(r,'min')} – ${format(r,'max')}`
-    : `${r.sector} · ${metric} ${labels[field]}：${format(r,field)}`;
+    : `${r.sector} · ${metric} ${labels[field]}：${format(r,field)}${field==='pct'?brokerSummary(r.sector):''}`;
+  function openSectorForecast(sector){
+    const row=document.querySelector(`.forecast-sector-table tr[data-sector="${CSS.escape(sector)}"]`);
+    if(!row)return false;
+    document.querySelectorAll('.forecast-sector-target').forEach(target=>target.classList.remove('forecast-sector-target'));
+    row.scrollIntoView({behavior:'smooth',block:'center'});
+    row.classList.add('forecast-sector-target');
+    row.focus({preventScroll:true});
+    return true;
+  }
   function el(name,attrs={},text) {
     const e=document.createElementNS(ns,name);
     Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));
@@ -32,8 +45,8 @@
     p.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')show(p,r,metric,field,e);});
     p.addEventListener('pointerleave',hide);
     p.addEventListener('focus',()=>show(p,r,metric,field));p.addEventListener('blur',hide);
-    p.addEventListener('click',e=>{e.stopPropagation();show(p,r,metric,field);});
-    p.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();show(p,r,metric,field);}});
+    p.addEventListener('click',e=>{e.stopPropagation();show(p,r,metric,field);if(field==='pct')openSectorForecast(r.sector);});
+    p.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();show(p,r,metric,field);if(field==='pct')openSectorForecast(r.sector);}});
     svg.append(p);
   }
   const trianglePoints=(x,y,direction)=>direction==='up'
@@ -97,6 +110,10 @@
     if(data)render();
   });
   document.addEventListener('keydown',e=>{if(e.key==='Escape')hide();});document.addEventListener('click',hide);
+  document.addEventListener('forecast:sectors-ready',event=>{
+    forecastSectors=new Map(event.detail.groups.flatMap(group=>group.rows).map(row=>[row.sector,row]));
+    if(data)render();
+  });
   window.addEventListener('resize',()=>{if(data)render();});window.addEventListener('scroll',hide,true);
   const dataVersion=document.querySelector('.rv-date time')?.getAttribute('datetime')||String(Date.now());
   fetch(`assets/rv-data.json?v=${encodeURIComponent(dataVersion)}`,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error();return r.json();}).then(d=>{data=d;render();}).catch(()=>{status.textContent='資料暫時無法載入，請重新整理頁面。';});

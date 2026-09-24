@@ -64,7 +64,7 @@
       ['產業','OW','UW'].forEach(label=>{const th=document.createElement('th');th.scope='col';th.textContent=label;headRow.append(th);});head.append(headRow);
       const tableBody=document.createElement('tbody');
       group.rows.forEach(row=>{
-        const tr=document.createElement('tr'),sector=document.createElement('th');sector.scope='row';sector.textContent=row.sector;tr.append(sector);
+        const tr=document.createElement('tr'),sector=document.createElement('th');tr.dataset.sector=row.sector;tr.tabIndex=-1;sector.scope='row';sector.textContent=row.sector;tr.append(sector);
         for(const entries of [row.overweight,row.underweight]){const td=document.createElement('td');td.append(sectorBrokerCell(entries));tr.append(td);}
         tableBody.append(tr);
       });
@@ -84,6 +84,7 @@
     body.replaceChildren(container);
     const brokers=new Set(data.calls.filter(call=>call.asset==='US IG'&&['Overweight Sector','Underweight Sector'].includes(call.type)).map(call=>call.broker));
     status.textContent=`資料截至 ${data.content_as_of} · US IG · ${brokers.size} 家券商 · ${matrix.mapped_calls}/${matrix.total_calls} 筆已對應`;
+    document.dispatchEvent(new CustomEvent('forecast:sectors-ready',{detail:matrix}));
   }
   function renderSupply(data){
     const supplyDate=document.querySelector('.supply-date time')?.dateTime||data.content_as_of;

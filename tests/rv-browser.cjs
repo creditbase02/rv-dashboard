@@ -92,6 +92,13 @@ async function run(browser, base, width = 1440) {
   assert.equal(await utilityRow.locator('td').nth(0).locator('.forecast-broker-tag').innerText(),'BofA');
   assert.equal(await healthcareRow.locator('td').nth(1).locator('.forecast-broker-tag').innerText(),'BofA');
   assert.equal(await insuranceRow.locator('td').nth(0).locator('.forecast-broker-tag').innerText(),'TD＊');
+  await page.locator('[name=section][value="Non-Cyclical"]').check();
+  const utilityBar=page.locator('.rv-point[data-sector="Utility"][data-metric="Spread"][data-field="pct"]');
+  await utilityBar.hover();
+  assert.match(await page.locator('#rv-tooltip').innerText(),/券商 OW 1 家／UW 0 家/);
+  await utilityBar.click();
+  assert.equal(await utilityRow.evaluate(row=>row.classList.contains('forecast-sector-target')),true);
+  assert.equal(await utilityRow.evaluate(row=>document.activeElement===row),true);
   await utilityRow.locator('.forecast-broker-tag').click();
   assert.match(await utilityRow.locator('.forecast-broker-detail').innerText(),/Utilities/);
   assert.equal(await utilityRow.locator('.forecast-broker-detail a').getAttribute('href'),'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/');
@@ -168,7 +175,9 @@ async function runBonds(browser,base,width=1440){
     assert.match(await page.locator('#grouping-notice').innerText(),/點位顏色預設為 Ticker、曲線分類預設為 Peer Group/);
     assert.match(await page.locator('#curve-legend').innerText(),/點位顏色｜Ticker/);
     assert.match(await page.locator('#curve-legend').innerText(),/回歸曲線｜Peer Group/);
-    assert.deepEqual((await page.locator('#industry-filter input').evaluateAll(inputs=>inputs.map(input=>input.value))).sort(),data.peer_definitions.map(definition=>definition.name).sort());
+    const recordTickers=new Set(data.records.map(record=>record[3]));
+    const populatedPeerGroups=data.peer_definitions.filter(definition=>definition.tickers.some(ticker=>recordTickers.has(ticker))).map(definition=>definition.name).sort();
+    assert.deepEqual((await page.locator('#industry-filter input').evaluateAll(inputs=>inputs.map(input=>input.value))).sort(),populatedPeerGroups);
     const peerStatus=await page.locator('#bond-status').innerText();
     assert.ok(peerStatus.includes(`顯示 ${expectedPeerVisible.toLocaleString('en-US')} 檔`),peerStatus);
     assert.ok(peerStatus.includes(`排除 ${unmapped.toLocaleString('en-US')} 檔未分類`),peerStatus);
