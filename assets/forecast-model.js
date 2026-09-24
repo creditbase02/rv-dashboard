@@ -8,10 +8,35 @@
   const ASSETS=['US IG','US HY','EUR IG','EUR HY'];
   const TYPES=['Spread','Gross Supply','Overweight Sector','Underweight Sector','Hyperscaler Issuance'];
   const STATUSES=['Latest','Carried'];
+  const SECTOR_GROUPS=[
+    {name:'Cyclical',sectors:['US Bank','Yankee Bank','Insurance','M&M','Chemical','Tech','Auto','Media','Energy','Capital Good']},
+    {name:'Non-Cyclical',sectors:['Telecom','Utility','F&B','Tobacco','Healthcare','Retail','Transportation']},
+  ];
+  const SECTOR_RULES=[
+    ['US Bank',['US Banks'],['Large US Banks - Sen HoldCos']],
+    ['Yankee Bank',['Yankee Banks'],['Japanese Banks','Australian/NZ Banks','Canadian Banks']],
+    ['Insurance',['Insurance'],['Life Insurance']],
+    ['M&M',['Metals/Mining'],[]],
+    ['Chemical',['Chemicals'],[]],
+    ['Tech',[],['Semiconductors']],
+    ['Auto',['Autos','Automotive'],['Automotive Suppliers','Automotive Manufacturing']],
+    ['Media',[],['Media Entertainment','Diversified Media','Cable/Satellite']],
+    ['Energy',['Energy'],['Pipelines','Energy Services']],
+    ['Capital Good',[],['Aerospace/Defense']],
+    ['Telecom',[],['Yankee Telecoms']],
+    ['Utility',['Utilities'],[]],
+    ['F&B',['Food & Bev','Food/Beverages'],[]],
+    ['Tobacco',['Tobacco'],[]],
+    ['Healthcare',['Health Care'],['Large Cap Pharma','Healthcare Services','Healthcare Pharmaceuticals']],
+    ['Retail',['Retail'],['Non-Food Retail','Food/Drug Retail']],
+    ['Transportation',[],[]],
+  ];
+  const BROKER_SECTOR_RULES={};
   const keys=(value,expected)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).sort().join('|')===[...expected].sort().join('|');
   const iso=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(`${value}T00:00:00Z`));
   const text=(value,max=2000)=>typeof value==='string'&&value.length<=max&&!/[\u0000-\u001f]/.test(value);
   const httpsUrl=value=>{try{return typeof value==='string'&&new URL(value).protocol==='https:';}catch{return false;}};
+  const normalizeSector=value=>typeof value==='string'?value.trim().replace(/\s+/g,' ').toLocaleLowerCase('en-US'):'';
 
   function validateManifest(manifest){
     if(!manifest||typeof manifest!=='object'||Array.isArray(manifest)||manifest.site_id!=='ib-knowledge-base'||manifest.validation_status!=='PASS')throw Error('IB integration manifest 無效');
@@ -53,6 +78,47 @@
   }
 
   function sectorRows(data){return groupCalls(data,['Overweight Sector','Underweight Sector']);}
+  function sectorRuleIndex(){
+    const index=new Map();
+    for(const group of SECTOR_GROUPS)for(const sector of group.sectors)index.set(normalizeSector(sector),{sector,detailed:false});
+    for(const [sector,broad,detailed] of SECTOR_RULES){
+      broad.forEach(alias=>index.set(normalizeSector(alias),{sector,detailed:false}));
+      detailed.forEach(alias=>index.set(normalizeSector(alias),{sector,detailed:true}));
+    }
+    return index;
+  }
+  function resolveSector(call,brokerRules=BROKER_SECTOR_RULES){
+    const sectorKey=normalizeSector(call.call),brokerKey=normalizeSector(call.broker);
+    const override=brokerRules?.[brokerKey]?.[sectorKey];
+    if(override)return typeof override==='string'?{sector:override,detailed:false}:{sector:override.sector,detailed:Boolean(override.detailed)};
+    return sectorRuleIndex().get(sectorKey)||null;
+  }
+  function sectorMatrix(data,brokerRules=BROKER_SECTOR_RULES){
+    const calls=data.calls.filter(call=>call.asset==='US IG'&&['Overweight Sector','Underweight Sector'].includes(call.type));
+    const buckets=new Map(),unmapped=[];
+    for(const group of SECTOR_GROUPS)for(const sector of group.sectors)for(const direction of ['overweight','underweight'])buckets.set(`${sector}|${direction}`,new Map());
+    for(const call of calls){
+      const match=resolveSector(call,brokerRules);
+      if(!match){unmapped.push(call);continue;}
+      const direction=call.type==='Overweight Sector'?'overweight':'underweight';
+      const brokerBucket=buckets.get(`${match.sector}|${direction}`);
+      if(!brokerBucket){unmapped.push(call);continue;}
+      if(!brokerBucket.has(call.broker))brokerBucket.set(call.broker,[]);
+      brokerBucket.get(call.broker).push({call,detailed:match.detailed});
+    }
+    const entries=map=>[...map.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([broker,items])=>({
+      broker,
+      detailed:items.every(item=>item.detailed),
+      calls:items.map(item=>item.call).sort((a,b)=>b.call_date.localeCompare(a.call_date)||a.call.localeCompare(b.call)),
+    }));
+    const groups=SECTOR_GROUPS.map(group=>({name:group.name,rows:group.sectors.map(sector=>({
+      sector,
+      overweight:entries(buckets.get(`${sector}|overweight`)),
+      underweight:entries(buckets.get(`${sector}|underweight`)),
+    }))}));
+    unmapped.sort((a,b)=>a.broker.localeCompare(b.broker)||a.type.localeCompare(b.type)||a.call.localeCompare(b.call));
+    return {groups,unmapped,total_calls:calls.length,mapped_calls:calls.length-unmapped.length};
+  }
   function annualSupplyRows(data){
     const year=String(data.reference_year);
     const selected={...data,calls:data.calls.filter(call=>call.target_date===year)};
@@ -91,5 +157,5 @@
     if(!Number.isFinite(actualUsd)||actualUsd<0||forecastBillions===null)return null;
     return Math.round(actualUsd/1e9/forecastBillions*100);
   }
-  return {SCHEMA_VERSION,ASSETS,TYPES,STATUSES,validateManifest,validateFeed,sectorRows,annualSupplyRows,supplyMatrix,usdBillions,progressPercent};
+  return {SCHEMA_VERSION,ASSETS,TYPES,STATUSES,SECTOR_GROUPS,SECTOR_RULES,BROKER_SECTOR_RULES,validateManifest,validateFeed,sectorRows,resolveSector,sectorMatrix,annualSupplyRows,supplyMatrix,usdBillions,progressPercent};
 });
