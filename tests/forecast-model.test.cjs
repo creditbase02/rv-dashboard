@@ -44,6 +44,41 @@ test('forecast selectors group sectors and current-year supply without aggregati
   assert.deepEqual(supply[0].hyperscaler.map(item=>item.call),['$330Bn']);
 });
 
+test('sector matrix maps aliases, preserves detail, and retains every unknown call',()=>{
+  const data=feed([
+    call({broker:'New Broker',type:'Overweight Sector',call:'  utilities  ',target_date:'',status:'Latest'}),
+    call({broker:'BofA',type:'Overweight Sector',call:'Energy',target_date:'',status:'Latest'}),
+    call({broker:'BofA',type:'Overweight Sector',call:'Pipelines',target_date:'',status:'Latest'}),
+    call({broker:'BofA',type:'Underweight Sector',call:'Energy Services',target_date:'',status:'Latest'}),
+    call({broker:'TD',type:'Overweight Sector',call:'Life Insurance',target_date:'',status:'Latest'}),
+    call({broker:'JPM',type:'Underweight Sector',call:'Consumer',target_date:'',status:'Latest'}),
+  ]);
+  const matrix=model.sectorMatrix(data);
+  const cyclical=matrix.groups.find(group=>group.name==='Cyclical');
+  const nonCyclical=matrix.groups.find(group=>group.name==='Non-Cyclical');
+  const energy=cyclical.rows.find(row=>row.sector==='Energy');
+  const insurance=cyclical.rows.find(row=>row.sector==='Insurance');
+  const utility=nonCyclical.rows.find(row=>row.sector==='Utility');
+  assert.equal(matrix.groups.flatMap(group=>group.rows).length,17);
+  assert.deepEqual(utility.overweight.map(entry=>entry.broker),['New Broker']);
+  assert.equal(energy.overweight[0].calls.length,2);
+  assert.equal(energy.overweight[0].detailed,false,'a broad call prevents the merged label from being marked detail-only');
+  assert.equal(energy.underweight[0].detailed,true);
+  assert.equal(insurance.overweight[0].detailed,true);
+  assert.deepEqual(matrix.unmapped.map(item=>item.call),['Consumer']);
+  assert.equal(matrix.mapped_calls+matrix.unmapped.length,matrix.total_calls);
+});
+
+test('broker-specific sector rules take priority over common aliases',()=>{
+  const data=feed([call({broker:'BofA',type:'Overweight Sector',call:'Utilities',target_date:'',status:'Latest'})]);
+  const matrix=model.sectorMatrix(data,{bofa:{utilities:{sector:'Energy',detailed:true}}});
+  const cyclical=matrix.groups.find(group=>group.name==='Cyclical');
+  const nonCyclical=matrix.groups.find(group=>group.name==='Non-Cyclical');
+  assert.equal(cyclical.rows.find(row=>row.sector==='Energy').overweight[0].broker,'BofA');
+  assert.equal(cyclical.rows.find(row=>row.sector==='Energy').overweight[0].detailed,true);
+  assert.equal(nonCyclical.rows.find(row=>row.sector==='Utility').overweight.length,0);
+});
+
 test('supply matrix transposes brokers, includes the snapshot month, and keeps the latest call',()=>{
   const data=feed([
     call(),

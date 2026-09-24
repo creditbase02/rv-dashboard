@@ -31,23 +31,59 @@
     items.forEach(item=>list.append(callLink(item)));
     return list;
   }
+  function sectorCallDetail(call){
+    const item=element('div','forecast-sector-call');
+    const heading=element('strong','',call.call);
+    const meta=element('span','forecast-sector-meta',`${call.call_date} · ${call.status==='Carried'?'延續':'最新'}`);
+    const note=element('p','',call.note||'無補充說明');
+    const link=element('a','','查看報告 →');link.href=call.source_url;
+    item.append(heading,meta,note,link);return item;
+  }
+  function brokerDisclosure(entry){
+    const disclosure=element('details','forecast-broker-disclosure');
+    const summary=element('summary','forecast-broker-tag',`${entry.broker}${entry.detailed?'＊':''}`);
+    const detail=element('div','forecast-broker-detail');
+    entry.calls.forEach(call=>detail.append(sectorCallDetail(call)));
+    disclosure.append(summary,detail);return disclosure;
+  }
+  function sectorBrokerCell(entries){
+    if(!entries.length)return element('span','forecast-empty','—');
+    const cell=element('div','forecast-sector-brokers');
+    entries.forEach(entry=>cell.append(brokerDisclosure(entry)));
+    return cell;
+  }
   function renderSectors(data){
-    const rows=window.ForecastModel.sectorRows(data);
-    const grid=element('div','forecast-sector-grid');
-    rows.forEach(row=>{
-      const card=element('article','forecast-broker-card');
-      const head=element('header');
-      head.append(element('h3','',row.broker),element('time','',row.as_of_date));
-      head.querySelector('time').dateTime=row.as_of_date;
-      const columns=element('div','forecast-direction-grid');
-      for(const [label,items,tone] of [['Overweight',row.overweight,'positive'],['Underweight',row.underweight,'negative']]){
-        const group=element('section',`forecast-direction ${tone}`);
-        group.append(element('h4','',label),callList(items));columns.append(group);
-      }
-      card.append(head,columns);grid.append(card);
+    const matrix=window.ForecastModel.sectorMatrix(data);
+    const container=element('div','forecast-sector-tables');
+    matrix.groups.forEach(group=>{
+      const panel=element('section','forecast-sector-panel');
+      panel.append(element('h3','',group.name));
+      const wrap=element('div','forecast-sector-table-wrap'),table=element('table','forecast-sector-table');
+      const caption=element('caption','sr-only',`${group.name} 產業券商 OW／UW 對照`);
+      const head=document.createElement('thead'),headRow=document.createElement('tr');
+      ['產業','OW','UW'].forEach(label=>{const th=document.createElement('th');th.scope='col';th.textContent=label;headRow.append(th);});head.append(headRow);
+      const tableBody=document.createElement('tbody');
+      group.rows.forEach(row=>{
+        const tr=document.createElement('tr'),sector=document.createElement('th');sector.scope='row';sector.textContent=row.sector;tr.append(sector);
+        for(const entries of [row.overweight,row.underweight]){const td=document.createElement('td');td.append(sectorBrokerCell(entries));tr.append(td);}
+        tableBody.append(tr);
+      });
+      table.append(caption,head,tableBody);wrap.append(table);panel.append(wrap);container.append(panel);
     });
-    body.replaceChildren(grid);
-    status.textContent=`資料截至 ${data.content_as_of} · US IG · ${rows.length} 家券商`;
+    const hasDetailed=matrix.groups.some(group=>group.rows.some(row=>[...row.overweight,...row.underweight].some(entry=>entry.detailed)));
+    if(hasDetailed)container.append(element('p','forecast-sector-footnote','＊代表細項觀點；點選券商可查看原始分類與來源。'));
+    if(matrix.unmapped.length){
+      const unmapped=element('details','forecast-unmapped'),summary=element('summary','',`未對應觀點（${matrix.unmapped.length}）`),list=element('div','forecast-unmapped-list');
+      matrix.unmapped.forEach(call=>{
+        const item=element('article','forecast-unmapped-item');
+        const heading=element('strong','',`${call.broker} · ${call.type==='Overweight Sector'?'OW':'UW'} · ${call.call}`);
+        item.append(heading,sectorCallDetail(call));list.append(item);
+      });
+      unmapped.append(summary,list);container.append(unmapped);
+    }
+    body.replaceChildren(container);
+    const brokers=new Set(data.calls.filter(call=>call.asset==='US IG'&&['Overweight Sector','Underweight Sector'].includes(call.type)).map(call=>call.broker));
+    status.textContent=`資料截至 ${data.content_as_of} · US IG · ${brokers.size} 家券商 · ${matrix.mapped_calls}/${matrix.total_calls} 筆已對應`;
   }
   function renderSupply(data){
     const supplyDate=document.querySelector('.supply-date time')?.dateTime||data.content_as_of;

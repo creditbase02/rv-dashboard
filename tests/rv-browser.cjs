@@ -9,6 +9,8 @@ const FORECAST_FEED='https://creditbase02.github.io/ib-knowledge-base/forecast-c
 const forecastCalls=[
   {broker:'BofA',asset:'US IG',type:'Overweight Sector',call:'Utilities',target_date:'',call_date:'2026-09-11',as_of_date:'2026-09-18',status:'Carried',note:'Sector view',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
   {broker:'BofA',asset:'US IG',type:'Underweight Sector',call:'Health Care',target_date:'',call_date:'2026-09-11',as_of_date:'2026-09-18',status:'Carried',note:'Sector view',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
+  {broker:'TD',asset:'US IG',type:'Overweight Sector',call:'Life Insurance',target_date:'',call_date:'2026-09-18',as_of_date:'2026-09-18',status:'Latest',note:'Detailed sector view',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/td/'},
+  {broker:'JPM',asset:'US IG',type:'Underweight Sector',call:'Consumer',target_date:'',call_date:'2026-08-21',as_of_date:'2026-09-18',status:'Carried',note:'Unmapped broad view',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/jpm/'},
   {broker:'BofA',asset:'US IG',type:'Gross Supply',call:'$2.1Tn',target_date:'2026',call_date:'2026-08-14',as_of_date:'2026-09-18',status:'Carried',note:'Annual forecast',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
   {broker:'BofA',asset:'US IG',type:'Gross Supply',call:'$190Bn',target_date:'2026-09',call_date:'2026-09-04',as_of_date:'2026-09-18',status:'Carried',note:'Monthly forecast',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
   {broker:'BofA',asset:'US IG',type:'Hyperscaler Issuance',call:'$330Bn',target_date:'2026',call_date:'2026-09-18',as_of_date:'2026-09-18',status:'Latest',note:'Annual forecast',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
@@ -82,9 +84,21 @@ async function run(browser, base, width = 1440) {
   const peerHref = await page.getByRole('link',{name:'返回券商報告知識庫'}).getAttribute('href');
   assert.equal(peerHref,'https://creditbase02.github.io/ib-knowledge-base/');
   await page.locator('[data-forecast-view=sectors]:not([hidden])').waitFor();
-  assert.equal(await page.locator('.forecast-broker-card').count(),1);
-  assert.match(await page.locator('.forecast-broker-card').innerText(),/Utilities/);
-  assert.match(await page.locator('.forecast-broker-card').innerText(),/Health Care/);
+  assert.deepEqual(await page.locator('.forecast-sector-panel>h3').allTextContents(),['Cyclical','Non-Cyclical']);
+  assert.equal(await page.locator('.forecast-sector-table tbody tr').count(),17);
+  const utilityRow=page.locator('.forecast-sector-table tr').filter({has:page.locator('th',{hasText:'Utility'})});
+  const healthcareRow=page.locator('.forecast-sector-table tr').filter({has:page.locator('th',{hasText:'Healthcare'})});
+  const insuranceRow=page.locator('.forecast-sector-table tr').filter({has:page.locator('th',{hasText:'Insurance'})});
+  assert.equal(await utilityRow.locator('td').nth(0).locator('.forecast-broker-tag').innerText(),'BofA');
+  assert.equal(await healthcareRow.locator('td').nth(1).locator('.forecast-broker-tag').innerText(),'BofA');
+  assert.equal(await insuranceRow.locator('td').nth(0).locator('.forecast-broker-tag').innerText(),'TD＊');
+  await utilityRow.locator('.forecast-broker-tag').click();
+  assert.match(await utilityRow.locator('.forecast-broker-detail').innerText(),/Utilities/);
+  assert.equal(await utilityRow.locator('.forecast-broker-detail a').getAttribute('href'),'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/');
+  assert.equal(await page.locator('.forecast-unmapped>summary').innerText(),'未對應觀點（1）');
+  await page.locator('.forecast-unmapped>summary').click();
+  assert.match(await page.locator('.forecast-unmapped-list').innerText(),/JPM · UW · Consumer/);
+  assert.match(await page.locator('.forecast-status').innerText(),/3\/4 筆已對應/);
   assert.deepEqual(errors,[]);
   await context.close();
   return {width,combinations};
