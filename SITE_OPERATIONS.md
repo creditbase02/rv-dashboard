@@ -140,6 +140,7 @@ pnpm run test:browser -- http://127.0.0.1:8766/
 - 推送 `codex/<task>` 並建立 PR；CI 通過後才合併 `main`。
 - GitHub Pages 僅部署 `main`，正式站與知識庫使用不同 workflow 及 concurrency group。
 - 發布後確認首頁、`bonds.html`、`supply.html`、三個公開資料 asset 與 `integration-manifest.json` 可讀。
+- GitHub Pages 對 HTML 與 JS 一律回 `cache-control: max-age=600`。部署後約 10 分鐘內，使用者可能仍拿到舊的頁面與舊的 `?v=` asset，而資料 asset 已是新版本；若這次發布含破壞性 schema 變更，畫面會顯示「偵測到資料版本已更新」提示（Supply 頁），需使用者按「重新載入」才會取得新內容。這是 GitHub Pages 無法自訂標頭的限制，不是資料遺失，也不代表部署失敗；排查時先用 cache-buster 請求與全新瀏覽器 context 確認，再決定是否回退。
 - 發布失敗時不修改知識庫；修正原 PR 或 `git revert <merge-commit>` 建立回復 PR。
 
 ## 上傳服務 rollout 與回復
