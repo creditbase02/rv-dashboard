@@ -43,3 +43,31 @@ test('forecast selectors group sectors and current-year supply without aggregati
   assert.deepEqual(supply[0].gross_supply.map(item=>item.call),['$2.1Tn']);
   assert.deepEqual(supply[0].hyperscaler.map(item=>item.call),['$330Bn']);
 });
+
+test('supply matrix transposes brokers, includes the snapshot month, and keeps the latest call',()=>{
+  const data=feed([
+    call(),
+    call({type:'Gross Supply',call:'$175Bn',target_date:'2026-09',call_date:'2026-08-28'}),
+    call({type:'Gross Supply',call:'$190Bn',target_date:'2026-09',call_date:'2026-09-04'}),
+    call({broker:'GS',type:'Gross Supply',call:'$2.3Tn',target_date:'2026',call_date:'2026-09-11'}),
+    call({broker:'TD',type:'Gross Supply',call:'$245-255Bn',target_date:'2026-09',call_date:'2026-08-21'}),
+    call({broker:'JPM',type:'Hyperscaler Issuance',call:'$230Bn',target_date:'2026',call_date:'2026-09-18'}),
+  ]);
+  const matrix=model.supplyMatrix(data,'2026-09');
+  assert.deepEqual(matrix.brokers,['BofA','GS','JPM','TD']);
+  assert.deepEqual(matrix.rows.map(row=>row.label),['2026 Gross Supply','9 月 Gross Supply','2026 Hyperscaler Issuance']);
+  assert.equal(matrix.rows[1].calls[0].call,'$190Bn');
+  assert.equal(matrix.rows[0].calls[1].call,'$2.3Tn');
+  assert.equal(matrix.rows[2].calls[2].call,'$230Bn');
+  assert.equal(matrix.rows[0].calls[3],null);
+  assert.throws(()=>model.supplyMatrix(data,'2026-13'),/月份/);
+});
+
+test('BofA comparison parses explicit USD forecasts and computes rounded progress',()=>{
+  assert.equal(model.usdBillions('$190Bn'),190);
+  assert.equal(model.usdBillions('$2.1Tn'),2100);
+  assert.equal(model.progressPercent(1646875719000,call({call:'$2.1Tn'})),78);
+  assert.equal(model.progressPercent(157550000000,call({call:'$190Bn'})),83);
+  for(const value of ['$245-255Bn','>$2Tn','190Bn','-20%'])assert.equal(model.usdBillions(value),null);
+  assert.equal(model.progressPercent(100e9,call({call:'$245-255Bn'})),null);
+});

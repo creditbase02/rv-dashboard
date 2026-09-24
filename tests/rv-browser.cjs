@@ -10,7 +10,9 @@ const forecastCalls=[
   {broker:'BofA',asset:'US IG',type:'Overweight Sector',call:'Utilities',target_date:'',call_date:'2026-09-11',as_of_date:'2026-09-18',status:'Carried',note:'Sector view',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
   {broker:'BofA',asset:'US IG',type:'Underweight Sector',call:'Health Care',target_date:'',call_date:'2026-09-11',as_of_date:'2026-09-18',status:'Carried',note:'Sector view',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
   {broker:'BofA',asset:'US IG',type:'Gross Supply',call:'$2.1Tn',target_date:'2026',call_date:'2026-08-14',as_of_date:'2026-09-18',status:'Carried',note:'Annual forecast',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
+  {broker:'BofA',asset:'US IG',type:'Gross Supply',call:'$190Bn',target_date:'2026-09',call_date:'2026-09-04',as_of_date:'2026-09-18',status:'Carried',note:'Monthly forecast',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
   {broker:'BofA',asset:'US IG',type:'Hyperscaler Issuance',call:'$330Bn',target_date:'2026',call_date:'2026-09-18',as_of_date:'2026-09-18',status:'Latest',note:'Annual forecast',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/'},
+  {broker:'GS',asset:'US IG',type:'Gross Supply',call:'$2.3Tn',target_date:'2026',call_date:'2026-09-11',as_of_date:'2026-09-18',status:'Carried',note:'Annual forecast',source_url:'https://creditbase02.github.io/ib-knowledge-base/reports/gs/'},
 ];
 const forecastFeed={schema_version:1,site_id:'ib-knowledge-base',content_as_of:'2026-09-18',reference_year:2026,source_url:'https://creditbase02.github.io/ib-knowledge-base/forecast/',calls:forecastCalls};
 const forecastManifest={schema_version:1,site_id:'ib-knowledge-base',production_url:'https://creditbase02.github.io/ib-knowledge-base/',validation_status:'PASS',datasets:{forecast:{asset:'forecast-calls.json',schema_version:1,content_as_of:'2026-09-18',sha256:'a'.repeat(64)}}};
@@ -301,8 +303,15 @@ async function runSupply(browser,base,width=1440){
   assert.equal(await page.locator('#ytd-top-tickers').isHidden(),true);
   await page.locator('[data-forecast-view=supply]:not([hidden])').waitFor();
   assert.equal(await page.locator('[data-forecast-year]').innerText(),'2026');
+  assert.deepEqual(await page.locator('.forecast-table thead th').allTextContents(),['預期項目','BofA','GS']);
+  assert.deepEqual(await page.locator('.forecast-table tbody th').allTextContents(),['2026 Gross Supply','9 月 Gross Supply','2026 Hyperscaler Issuance']);
   assert.match(await page.locator('.forecast-table').innerText(),/\$2\.1Tn/);
+  assert.match(await page.locator('.forecast-table').innerText(),/\$190Bn/);
   assert.match(await page.locator('.forecast-table').innerText(),/\$330Bn/);
+  if(width===375)assert.equal(await page.locator('.forecast-table-wrap').evaluate(node=>node.scrollWidth>node.clientWidth),true);
+  await page.locator('#ytd-forecast-comparison:not([hidden])').waitFor();
+  assert.equal(await page.locator('#ytd-forecast-comparison').innerText(),'BofA 2026E $2.1Tn · 已達 78%');
+  assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),'BofA 9月E $190Bn · 已達 83%');
 
   const industryName=data.breakdowns.industry[0][0],industryTop=Object.fromEntries(data.top_tickers.ytd.industry)[industryName];
   assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'industry');
@@ -418,6 +427,15 @@ async function runForecastFallbacks(browser,base){
   await page.locator('.forecast-retry').waitFor();
   assert.match(await page.locator('[data-forecast-status]').innerText(),/HTTP 503/);
   assert.ok(await page.locator('.rv-point').count()>0,'forecast failure must not break RV charts');
+  await context.close();
+
+  context=await browser.newContext({viewport:{width:1440,height:1000}});page=await context.newPage();
+  await routeForecast(page,{missing:true});
+  await page.goto(base+'supply.html');await page.waitForFunction(()=>document.querySelector('#supply-status')?.textContent.includes('公開聚合快照'));
+  assert.equal(await page.locator('[data-forecast-view=supply]').isHidden(),true);
+  assert.equal(await page.locator('#ytd-forecast-comparison').isHidden(),true);
+  assert.equal(await page.locator('#mtd-forecast-comparison').isHidden(),true);
+  assert.ok(await page.locator('#ytd-chart svg').count()>0,'missing forecast must not break Supply charts');
   await context.close();
 }
 

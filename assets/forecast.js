@@ -7,6 +7,8 @@
   const tracker=section.querySelector('[data-forecast-tracker]');
   const manifestUrl=section.dataset.forecastManifest;
   const view=section.dataset.forecastView;
+  let supplySummary=window.RVSupplySummary||null;
+  let forecastData=null;
 
   function element(name,className,text){
     const node=document.createElement(name);
@@ -48,24 +50,44 @@
     status.textContent=`資料截至 ${data.content_as_of} · US IG · ${rows.length} 家券商`;
   }
   function renderSupply(data){
-    const rows=window.ForecastModel.annualSupplyRows(data);
+    const supplyDate=document.querySelector('.supply-date time')?.dateTime||data.content_as_of;
+    const matrix=window.ForecastModel.supplyMatrix(data,supplyDate.slice(0,7));
     const table=element('table','forecast-table');
-    const caption=element('caption','sr-only',`${data.reference_year} US IG 券商年度供給預估`);
+    const caption=element('caption','sr-only',`${matrix.year} US IG 券商供給預估`);
     const head=document.createElement('thead');
     const headRow=document.createElement('tr');
-    ['券商','Annual Gross Supply','Hyperscaler Issuance'].forEach(label=>{const cell=document.createElement('th');cell.scope='col';cell.textContent=label;headRow.append(cell);});
+    ['預期項目',...matrix.brokers].forEach(label=>{const cell=document.createElement('th');cell.scope='col';cell.textContent=label;headRow.append(cell);});
     head.append(headRow);
     const tableBody=document.createElement('tbody');
-    rows.forEach(row=>{
-      const tr=document.createElement('tr'),broker=document.createElement('th');
-      broker.scope='row';broker.textContent=row.broker;tr.append(broker);
-      for(const items of [row.gross_supply,row.hyperscaler]){const td=document.createElement('td');td.append(callList(items));tr.append(td);}
+    matrix.rows.forEach(row=>{
+      const tr=document.createElement('tr'),label=document.createElement('th');
+      label.scope='row';label.textContent=row.label;tr.append(label);
+      row.calls.forEach(call=>{const td=document.createElement('td');td.append(call?callLink(call):element('span','forecast-empty','—'));tr.append(td);});
       tableBody.append(tr);
     });
     table.append(caption,head,tableBody);
     const wrap=element('div','forecast-table-wrap');wrap.append(table);body.replaceChildren(wrap);
-    const heading=section.querySelector('[data-forecast-year]');if(heading)heading.textContent=String(data.reference_year);
-    status.textContent=`資料截至 ${data.content_as_of} · US IG · ${rows.length} 家券商`;
+    const heading=section.querySelector('[data-forecast-year]');if(heading)heading.textContent=matrix.year;
+    status.textContent=`資料截至 ${data.content_as_of} · US IG · ${matrix.brokers.length} 家券商`;
+    forecastData=data;
+    renderSupplyComparisons();
+  }
+  function renderSupplyComparisons(){
+    if(view!=='supply'||!forecastData||!supplySummary)return;
+    const month=supplySummary.date.slice(0,7);
+    const matrix=window.ForecastModel.supplyMatrix(forecastData,month);
+    const brokerIndex=matrix.brokers.indexOf('BofA');
+    const targets=[
+      ['annual','#ytd-forecast-comparison',supplySummary.ytd_usd,`${matrix.year}E`],
+      ['monthly','#mtd-forecast-comparison',supplySummary.mtd_usd,`${Number(month.slice(5))}月E`],
+    ];
+    targets.forEach(([key,selector,actual,label])=>{
+      const node=document.querySelector(selector),row=matrix.rows.find(item=>item.key===key),call=brokerIndex<0?null:row?.calls[brokerIndex];
+      const progress=window.ForecastModel.progressPercent(actual,call);
+      if(!node||!call||progress===null){if(node)node.hidden=true;return;}
+      node.textContent=`BofA ${label} ${call.call} · 已達 ${progress}%`;
+      node.hidden=false;
+    });
   }
   function showError(error){
     section.hidden=false;section.classList.add('forecast-error');body.replaceChildren();status.replaceChildren();
@@ -91,5 +113,6 @@
       if(view==='sectors')renderSectors(data);else if(view==='supply')renderSupply(data);else throw Error('Forecast view 無效');
     }catch(error){showError(error);}
   }
+  document.addEventListener('rv:supply-ready',event=>{supplySummary=event.detail;renderSupplyComparisons();});
   load();
 })();
