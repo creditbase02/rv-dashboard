@@ -33,10 +33,11 @@ class LuacTests(unittest.TestCase):
         self.assertEqual(anomalies, sum(bool(record[-1]) for record in self.snapshot["records"]))
         self.assertEqual(self.snapshot["schema_version"], 2)
         self.assertEqual(self.snapshot["columns"], list(COLUMNS))
-        self.assertEqual([definition["name"] for definition in self.snapshot["peer_definitions"]], ["US Big 6 bank", "Health Insurance", "Hyperscaler"])
+        self.assertEqual([definition["name"] for definition in self.snapshot["peer_definitions"]], ["US Big 6 bank", "Health Insurance", "Hyperscaler", "IG Semiconductor", "AI Hardware / Networking", "Data Center", "Neocloud"])
         mapped = {ticker for definition in self.snapshot["peer_definitions"] for ticker in definition["tickers"]}
-        self.assertEqual(len(mapped), 16)
-        self.assertTrue(mapped.issubset({record[3] for record in self.snapshot["records"]}))
+        self.assertEqual(len(mapped), 35)
+        present = {record[3] for record in self.snapshot["records"]}
+        self.assertEqual(mapped - present, {"APLD", "CRWV", "HUTBPA", "HUTRBA", "NBIS", "QTSQST", "SMCI"})
         self.assertEqual({record[9] for record in self.snapshot["records"]}, {"Communications", "Consumer Discretionary", "Consumer Staples", "Energy", "Financials", "Health Care", "Industrials", "Materials", "Real Estate", "Technology", "Utilities"})
         self.assertLess((ROOT / "assets" / "luac-bonds.json").stat().st_size, 4 * 1024 * 1024)
         serialized = json.dumps(self.snapshot).lower()

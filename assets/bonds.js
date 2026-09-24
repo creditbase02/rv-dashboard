@@ -3,6 +3,7 @@
   const model=window.LuacModel;
   const bandColors={AAA:'#2c7fb8',AA:'#41ab5d',A:'#f0a202',BBB:'#d9488b',BB:'#7b61a8',NR:'#8b95a1'};
   const palette=['#2c7fb8','#41ab5d','#f0a202','#d9488b','#7b61a8','#00a6a6','#e76f51','#6a994e','#577590','#b56576','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf','#aec7e8','#ffbb78','#98df8a','#ff9896','#c5b0d5'];
+  const peerPaletteLimit=40;
   const groupLabels={band:'信評大類',industry:'產業',peer_group:'Peer Group',ticker:'Ticker'};
   const pageSize=50,xLimit={min:0,max:50};
   const emptySelection=new Set();
@@ -90,7 +91,7 @@
     });
   }
 
-  function groupingLimit(){return peerGroupingActive()?palette.length:10;}
+  function groupingLimit(){return peerGroupingActive()?peerPaletteLimit:10;}
 
   function enforceGroupings(announce=false){
     const messages=[];
@@ -143,7 +144,7 @@
 
   function seriesColors(group,values){
     if(group==='band')return new Map(model.BANDS.map(value=>[value,bandColors[value]]));
-    return new Map(values.map((value,index)=>[value,palette[index%palette.length]]));
+    return new Map(values.map((value,index)=>[value,palette[index]||`hsl(${Math.round(index*137.508)%360} 58% ${index%2?42:54}%)`]));
   }
 
   function curvePopulation(){return state.bonds.filter(passesAllFilters);}

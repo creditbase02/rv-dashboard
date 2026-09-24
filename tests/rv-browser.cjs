@@ -175,7 +175,9 @@ async function runBonds(browser,base,width=1440){
     assert.match(await page.locator('#grouping-notice').innerText(),/點位顏色預設為 Ticker、曲線分類預設為 Peer Group/);
     assert.match(await page.locator('#curve-legend').innerText(),/點位顏色｜Ticker/);
     assert.match(await page.locator('#curve-legend').innerText(),/回歸曲線｜Peer Group/);
-    assert.deepEqual((await page.locator('#industry-filter input').evaluateAll(inputs=>inputs.map(input=>input.value))).sort(),data.peer_definitions.map(definition=>definition.name).sort());
+    const recordTickers=new Set(data.records.map(record=>record[3]));
+    const populatedPeerGroups=data.peer_definitions.filter(definition=>definition.tickers.some(ticker=>recordTickers.has(ticker))).map(definition=>definition.name).sort();
+    assert.deepEqual((await page.locator('#industry-filter input').evaluateAll(inputs=>inputs.map(input=>input.value))).sort(),populatedPeerGroups);
     const peerStatus=await page.locator('#bond-status').innerText();
     assert.ok(peerStatus.includes(`顯示 ${expectedPeerVisible.toLocaleString('en-US')} 檔`),peerStatus);
     assert.ok(peerStatus.includes(`排除 ${unmapped.toLocaleString('en-US')} 檔未分類`),peerStatus);
