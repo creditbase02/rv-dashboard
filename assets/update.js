@@ -337,6 +337,19 @@
     if(!response.ok)throw Error(body.error||`HTTP ${response.status}`);
     return body;
   }
+  async function publishApi(path,data,onRetry){
+    for(let attempt=0;attempt<3;attempt++){
+      try{return await api(path,{method:'POST',body:JSON.stringify({data})});}
+      catch(error){
+        // fetch() uses TypeError for transport/CORS failures. Publishing is
+        // idempotent because the Worker derives its branch from the sanitized
+        // payload digest, so retrying cannot create a second data PR.
+        if(!(error instanceof TypeError)||attempt===2)throw error;
+        onRetry?.(attempt+1);
+        await new Promise(resolve=>setTimeout(resolve,1500*(attempt+1)));
+      }
+    }
+  }
   async function testService(){
     if(!state.config.api_url){setStatus(publishStatus,'error','尚未設定更新服務網址。');return;}
     try{const response=await fetch(endpoint('/health'),{cache:'no-store'});const text=await response.text();if(!response.ok)throw Error(text||`HTTP ${response.status}`);setStatus(publishStatus,'success',text);}
@@ -374,7 +387,7 @@
     try{
       const session=await api('/session',{method:'POST',body:JSON.stringify({password:secret})});state.token=session.token;password.value='';
       setStatus(publishStatus,'neutral','驗證成功，正在建立資料更新 PR…');
-      const job=await api('/publish',{method:'POST',body:JSON.stringify({data:state.data})});
+      const job=await publishApi('/publish',state.data,()=>setStatus(publishStatus,'neutral','連線中斷，正在查回或重試既有資料 PR…'));
       await pollStatus(job.id);
     }catch(error){setStatus(publishStatus,'error',error.message||String(error));publishButton.disabled=false;}
   }
@@ -386,13 +399,13 @@
     try{
       const session=await api('/session',{method:'POST',body:JSON.stringify({password:secret})});state.token=session.token;luacPassword.value='';
       setStatus(luacPublishStatus,'neutral','驗證成功，正在建立單券資料更新 PR…');
-      const job=await api('/publish/luac',{method:'POST',body:JSON.stringify({data:state.luacData})});
+      const job=await publishApi('/publish/luac',state.luacData,()=>setStatus(luacPublishStatus,'neutral','連線中斷，正在查回或重試既有 LUAC 資料 PR…'));
       await pollLuacStatus(job.id);
     }catch(error){setStatus(luacPublishStatus,'error',error.message||String(error));refreshLuacActions();}
   }
   async function publishSupply(){
     if(!state.supplyData||!state.supplyPublishEligible||!state.config.supply_enabled)return;const secret=supplyPassword.value;if(!secret){setStatus(supplyPublishStatus,'error','請輸入上傳密碼。');return;}supplyPublishButton.disabled=true;setStatus(supplyPublishStatus,'neutral','正在登入更新服務…');
-    try{const session=await api('/session',{method:'POST',body:JSON.stringify({password:secret})});state.token=session.token;supplyPassword.value='';setStatus(supplyPublishStatus,'neutral','驗證成功，正在建立 Supply 資料 PR…');const job=await api('/publish/supply',{method:'POST',body:JSON.stringify({data:state.supplyData})});await pollSupplyStatus(job.id);}catch(error){setStatus(supplyPublishStatus,'error',error.message||String(error));refreshSupplyActions();}
+    try{const session=await api('/session',{method:'POST',body:JSON.stringify({password:secret})});state.token=session.token;supplyPassword.value='';setStatus(supplyPublishStatus,'neutral','驗證成功，正在建立 Supply 資料 PR…');const job=await publishApi('/publish/supply',state.supplyData,()=>setStatus(supplyPublishStatus,'neutral','連線中斷，正在查回或重試既有 Supply 資料 PR…'));await pollSupplyStatus(job.id);}catch(error){setStatus(supplyPublishStatus,'error',error.message||String(error));refreshSupplyActions();}
   }
   const bridgeEndpoint=path=>`http://127.0.0.1:8768${path}`;
   async function bridgeRequest(path,options={}){

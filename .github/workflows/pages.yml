@@ -14,7 +14,10 @@ permissions:
   id-token: write
 
 concurrency:
-  group: rv-dashboard-pages
+  # Each PR validates independently so simultaneous RV/LUAC/Supply uploads do
+  # not evict one another from GitHub's single pending slot.  Main deployments
+  # remain serialized in their own group.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
   cancel-in-progress: false
 
 jobs:

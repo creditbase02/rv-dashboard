@@ -292,6 +292,27 @@ test('duplicate sanitized submission returns its existing PR', async () => {
   } finally { globalThis.fetch = savedFetch; }
 });
 
+test('an overlapping retry waits for the first request to finish creating its PR', async () => {
+  const savedFetch = globalThis.fetch;
+  let lookups = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    const value = String(url);
+    if (value.endsWith('/access_tokens')) return apiJson({token: 'installation'});
+    if (value.includes('/contents/assets/rv-data.json')) return apiJson({sha: 'file-sha', content: Buffer.from(JSON.stringify(snapshot('2026-08-05'))).toString('base64')});
+    if (value.endsWith('/git/ref/heads/codex/rv-upload-portal')) return apiJson({object: {sha: 'base-sha'}});
+    if (value.endsWith('/git/refs')) return apiJson({message: 'Reference already exists'}, 422);
+    if (value.includes('/pulls?state=all')) {
+      lookups += 1;
+      return apiJson(lookups < 3 ? [] : [{number: 75, state: 'open', merged_at: null}]);
+    }
+    throw new Error(`Unexpected URL ${url} ${options.method || 'GET'}`);
+  };
+  try {
+    assert.deepEqual(await publishSnapshot(await githubEnv(), snapshot()), {id: '75', state: 'open'});
+    assert.equal(lookups, 3);
+  } finally { globalThis.fetch = savedFetch; }
+});
+
 test('a transferred App with one installation recovers from its retired installation ID', async () => {
   const savedFetch = globalThis.fetch;
   const calls = [];

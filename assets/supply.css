@@ -53,6 +53,7 @@ body{background:#f5f7f9;font-family:"Microsoft JhengHei","PingFang TC",sans-seri
 .supply-note h2{margin:0;color:#274d67;font-size:15px}
 .supply-note p{margin:6px 0}
 .supply-tooltip{position:fixed;z-index:70;max-width:calc(100vw - 24px);padding:8px 11px;border:1px solid #c5d5df;border-radius:5px;background:#fff;box-shadow:0 6px 20px #173e5a28;color:#173e5a;font-size:13px;pointer-events:none}
+.supply-tooltip[hidden]{display:none}
 .supply-tooltip strong{display:block}
 .supply-tooltip span{color:#607685}
 .site-footer{max-width:1440px}
