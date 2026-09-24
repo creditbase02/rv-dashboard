@@ -198,6 +198,9 @@
     document.querySelector('#mtd-value').textContent=`$${amount(data.mtd_usd)}`;
     document.querySelector('#row-count').textContent=new Intl.NumberFormat('en-US').format(data.row_count);
     document.querySelector('#quality-summary').textContent=`${data.quality.date_corrections} 筆日期校正 · ${data.quality.duplicate_cusip_groups} 組重複 CUSIP`;
+    const supplySummary=Object.freeze({date:data.date,ytd_usd:data.ytd_usd,mtd_usd:data.mtd_usd});
+    window.RVSupplySummary=supplySummary;
+    document.dispatchEvent(new CustomEvent('rv:supply-ready',{detail:supplySummary}));
     status.textContent=`${data.date} · ${data.row_count.toLocaleString('en-US')} 筆發行記錄 · 公開聚合快照`;
     renderYtd();renderMonthly();renderTables();
   }

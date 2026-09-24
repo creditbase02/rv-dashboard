@@ -17,6 +17,8 @@ body{background:#f5f7f9;font-family:"Microsoft JhengHei","PingFang TC",sans-seri
 .supply-kpis p{margin:0;color:#5e7382;font-size:13px;font-weight:700}
 .supply-kpis strong{display:block;margin:5px 0;color:#123654;font-size:clamp(28px,4vw,42px);line-height:1.15;font-variant-numeric:tabular-nums}
 .supply-kpis small{color:#7b8b97}
+.supply-kpis .supply-kpi-comparison{display:block;margin-top:9px;padding-top:9px;border-top:1px solid #e1e8ed;color:#285f7b;font-weight:800;font-variant-numeric:tabular-nums}
+.supply-kpis .supply-kpi-comparison[hidden]{display:none}
 .supply-card{margin:20px 0;padding:22px;border:1px solid #d7e2e9;border-radius:10px;background:#fff;box-shadow:0 8px 24px #173e5a0b}
 .chart-heading{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
 .chart-heading h2,.breakdown-heading h2{margin:2px 0;color:#123654;font-size:22px}

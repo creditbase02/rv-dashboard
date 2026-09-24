@@ -58,5 +58,38 @@
     const selected={...data,calls:data.calls.filter(call=>call.target_date===year)};
     return groupCalls(selected,['Gross Supply','Hyperscaler Issuance']);
   }
-  return {SCHEMA_VERSION,ASSETS,TYPES,STATUSES,validateManifest,validateFeed,sectorRows,annualSupplyRows};
+  function latestCalls(data,type,targetDate){
+    const latest=new Map();
+    data.calls.filter(call=>call.asset==='US IG'&&call.type===type&&call.target_date===targetDate).forEach(call=>{
+      const current=latest.get(call.broker);
+      if(!current||call.call_date>current.call_date||(call.call_date===current.call_date&&call.as_of_date>current.as_of_date))latest.set(call.broker,call);
+    });
+    return latest;
+  }
+  function supplyMatrix(data,month){
+    if(typeof month!=='string'||!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month))throw Error('Supply forecast 月份無效');
+    const year=month.slice(0,4),monthNumber=Number(month.slice(5));
+    const annual=latestCalls(data,'Gross Supply',year);
+    const monthly=latestCalls(data,'Gross Supply',month);
+    const hyperscaler=latestCalls(data,'Hyperscaler Issuance',year);
+    const brokers=[...new Set([...annual.keys(),...monthly.keys(),...hyperscaler.keys()])].sort((a,b)=>a==='BofA'?-1:b==='BofA'?1:a.localeCompare(b));
+    return {year,month,brokers,rows:[
+      {key:'annual',label:`${year} Gross Supply`,calls:brokers.map(broker=>annual.get(broker)||null)},
+      {key:'monthly',label:`${monthNumber} 月 Gross Supply`,calls:brokers.map(broker=>monthly.get(broker)||null)},
+      {key:'hyperscaler',label:`${year} Hyperscaler Issuance`,calls:brokers.map(broker=>hyperscaler.get(broker)||null)},
+    ]};
+  }
+  function usdBillions(value){
+    if(typeof value!=='string')return null;
+    const match=value.match(/^\$([0-9]+(?:\.[0-9]+)?)(Bn|Tn)$/i);
+    if(!match)return null;
+    const amount=Number(match[1])*(match[2].toLowerCase()==='tn'?1000:1);
+    return Number.isFinite(amount)&&amount>0?amount:null;
+  }
+  function progressPercent(actualUsd,forecastCall){
+    const forecastBillions=usdBillions(forecastCall?.call);
+    if(!Number.isFinite(actualUsd)||actualUsd<0||forecastBillions===null)return null;
+    return Math.round(actualUsd/1e9/forecastBillions*100);
+  }
+  return {SCHEMA_VERSION,ASSETS,TYPES,STATUSES,validateManifest,validateFeed,sectorRows,annualSupplyRows,supplyMatrix,usdBillions,progressPercent};
 });
