@@ -414,10 +414,14 @@ async function runSupply(browser,base,width=1440){
   await segment.click();
   assert.equal(await page.locator('#monthly-top-tickers').isVisible(),true);
   assert.deepEqual(await topRows('#monthly-top-tickers'),Object.fromEntries(data.top_tickers.monthly.peer_groups)[peerName][peerMonth].map(([ticker,value],index)=>[String(index+1),ticker,billion(value),share(value,peerMonths[peerMonth])]));
+  // 上一行 click 會重建圖表；游標若停在長條上，瀏覽器會在重建後補發 pointerenter 再次顯示 tooltip，
+  // 讓下面的 tooltip 斷言取決於瀏覽器何時更新 hover 狀態（CI 較慢時會在 Escape 之後才補發）。
+  // 先把游標移離圖表，讓 tooltip 只由 focus／Escape 決定。
+  await page.mouse.move(0,0);
   await segment.focus();
   assert.equal(await page.locator('#supply-tooltip').isVisible(),true);
   assert.ok((await page.locator('#supply-tooltip').innerText()).endsWith(share(peerMonths[peerMonth],data.monthly.total[peerMonth])),'peer tooltip must use the month total');
-  await page.keyboard.press('Escape');
+  await segment.press('Escape');
   assert.equal(await page.locator('#supply-tooltip').isHidden(),true);
   await segment.click();
   assert.equal(await page.locator('#monthly-top-tickers').isHidden(),true);
@@ -479,8 +483,12 @@ async function runStaleSupply(browser,base,width=1440){
   assert.equal(await status.getAttribute('role'),'status');
   assert.equal(await page.locator('#ytd-value').innerText(),'—');
   assert.equal(await page.locator('#ytd-chart .supply-bar').count(),0);
-  await page.locator('#supply-status .reload-button').click();
-  await page.waitForFunction(()=>location.search.includes('refresh='));
+  const [refetch]=await Promise.all([
+    page.waitForResponse(response=>response.url().includes('assets/supply-data.json')),
+    page.locator('#supply-status .reload-button').click(),
+  ]);
+  await page.waitForURL(/refresh=/);
+  assert.equal(refetch.status(),200);
   assert.ok(hits>=2,`reload must refetch the snapshot (fetches=${hits})`);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/supply stale banner overflow`);
   assert.deepEqual(errors,[]);
