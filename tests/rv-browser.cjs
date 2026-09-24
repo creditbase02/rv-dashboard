@@ -316,6 +316,7 @@ async function runSupply(browser,base,width=1440){
   assert.equal(await page.locator('#mtd-label').innerText(),`${data.year} MTD Issuance`);
   assert.equal(await page.locator('#row-count').innerText(),data.row_count.toLocaleString('en-US'));
   const billion=value=>Math.round(value/1e9).toLocaleString('en-US');
+  const detailBillion=value=>(value/1e9).toLocaleString('en-US',{maximumFractionDigits:2});
   const share=(value,total)=>`${(value/total*100).toFixed(2)}%`;
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const topRows=panel=>page.locator(`${panel} tbody tr`).evaluateAll(rows=>rows.map(row=>[...row.children].map(cell=>cell.innerText)));
@@ -339,12 +340,13 @@ async function runSupply(browser,base,width=1440){
   const industryName=data.breakdowns.industry[0][0],industryTop=Object.fromEntries(data.top_tickers.ytd.industry)[industryName];
   assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'industry');
   assert.equal(await page.locator('#ytd-chart .supply-bar').count(),data.breakdowns.industry.length);
+  for(const label of await page.locator('#ytd-chart text.bar-value').allTextContents()) assert.match(label,/^\d{1,3}(,\d{3})*(\.\d{1,2})?$/,`${label} must render as $bn with at most 2 decimals`);
   const industryBar=page.locator(`#ytd-chart .supply-bar[data-category="${industryName}"]`);
   await industryBar.click();
   assert.equal(await industryBar.getAttribute('role'),'button');
   assert.equal(await industryBar.getAttribute('aria-pressed'),'true');
   assert.equal(await page.locator('#ytd-top-tickers').isVisible(),true);
-  assert.deepEqual(await topRows('#ytd-top-tickers'),industryTop.map(([ticker,value],index)=>[String(index+1),ticker,billion(value),share(value,data.breakdowns.industry[0][1])]));
+  assert.deepEqual(await topRows('#ytd-top-tickers'),industryTop.map(([ticker,value],index)=>[String(index+1),ticker,detailBillion(value),share(value,data.breakdowns.industry[0][1])]));
   await industryBar.click();
   assert.equal(await industryBar.getAttribute('aria-pressed'),'false');
   assert.equal(await page.locator('#ytd-top-tickers').isHidden(),true);
@@ -355,7 +357,7 @@ async function runSupply(browser,base,width=1440){
   const ratingName=data.breakdowns.rating[0][0],ratingBar=page.locator(`#ytd-chart .supply-bar[data-category="${ratingName}"]`);
   await ratingBar.click();
   assert.equal(await page.locator('#ytd-top-tickers').isVisible(),true);
-  assert.deepEqual(await topRows('#ytd-top-tickers'),Object.fromEntries(data.top_tickers.ytd.rating)[ratingName].map(([ticker,value],index)=>[String(index+1),ticker,billion(value),share(value,data.breakdowns.rating[0][1])]));
+  assert.deepEqual(await topRows('#ytd-top-tickers'),Object.fromEntries(data.top_tickers.ytd.rating)[ratingName].map(([ticker,value],index)=>[String(index+1),ticker,detailBillion(value),share(value,data.breakdowns.rating[0][1])]));
 
   await page.locator('[name=supply-group][value=peer_group]').check();
   assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'peer_group');
@@ -371,7 +373,7 @@ async function runSupply(browser,base,width=1440){
   assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'ticker');
   assert.equal(await page.locator('#ytd-chart .supply-bar').count(),data.peer_tickers[peerName].length);
   assert.equal(await page.locator('#peer-back').isVisible(),true);
-  assert.deepEqual(await topRows('#ytd-top-tickers'),data.peer_tickers[peerName].slice(0,5).map(([ticker,value],index)=>[String(index+1),ticker,billion(value),share(value,peerTotal)]));
+  assert.deepEqual(await topRows('#ytd-top-tickers'),data.peer_tickers[peerName].slice(0,5).map(([ticker,value],index)=>[String(index+1),ticker,detailBillion(value),share(value,peerTotal)]));
   await page.locator('#peer-back').click();
   assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'peer_group');
   assert.equal(await page.locator('#peer-back').isHidden(),true);
@@ -385,7 +387,7 @@ async function runSupply(browser,base,width=1440){
   assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'peer_group');
   assert.equal(await page.locator('#peer-back').isHidden(),true);
   assert.equal(await page.locator('#ytd-top-tickers').isVisible(),true);
-  assert.deepEqual(await topRows('#ytd-top-tickers'),Object.fromEntries(data.top_tickers.ytd.peer_group)['Other IG'].map(([ticker,value],index)=>[String(index+1),ticker,billion(value),share(value,otherIgTotal)]));
+  assert.deepEqual(await topRows('#ytd-top-tickers'),Object.fromEntries(data.top_tickers.ytd.peer_group)['Other IG'].map(([ticker,value],index)=>[String(index+1),ticker,detailBillion(value),share(value,otherIgTotal)]));
   await otherIg.click();
   assert.equal(await page.locator('#ytd-top-tickers').isHidden(),true);
 
@@ -396,7 +398,7 @@ async function runSupply(browser,base,width=1440){
   await monthBar.click();
   assert.equal(await monthBar.getAttribute('aria-pressed'),'true');
   assert.equal(await page.locator('#monthly-top-tickers').isVisible(),true);
-  assert.deepEqual(await topRows('#monthly-top-tickers'),data.top_tickers.monthly.total[activeMonth].map(([ticker,value],index)=>[String(index+1),ticker,billion(value),share(value,data.monthly.total[activeMonth])]));
+  assert.deepEqual(await topRows('#monthly-top-tickers'),data.top_tickers.monthly.total[activeMonth].map(([ticker,value],index)=>[String(index+1),ticker,detailBillion(value),share(value,data.monthly.total[activeMonth])]));
   const emptyMonth=page.locator(`#monthly-chart .supply-bar[data-month="${monthNames[data.monthly.total.findIndex(value=>!value)]}"]`);
   assert.equal(await emptyMonth.getAttribute('role'),null);
   assert.equal(await emptyMonth.getAttribute('tabindex'),null);
@@ -413,7 +415,7 @@ async function runSupply(browser,base,width=1440){
   const segment=page.locator(`#monthly-chart .supply-bar[data-series="${peerName}"][data-month="${monthNames[peerMonth]}"]`);
   await segment.click();
   assert.equal(await page.locator('#monthly-top-tickers').isVisible(),true);
-  assert.deepEqual(await topRows('#monthly-top-tickers'),Object.fromEntries(data.top_tickers.monthly.peer_groups)[peerName][peerMonth].map(([ticker,value],index)=>[String(index+1),ticker,billion(value),share(value,peerMonths[peerMonth])]));
+  assert.deepEqual(await topRows('#monthly-top-tickers'),Object.fromEntries(data.top_tickers.monthly.peer_groups)[peerName][peerMonth].map(([ticker,value],index)=>[String(index+1),ticker,detailBillion(value),share(value,peerMonths[peerMonth])]));
   // 上一行 click 會重建圖表；游標若停在長條上，瀏覽器會在重建後補發 pointerenter 再次顯示 tooltip，
   // 讓下面的 tooltip 斷言取決於瀏覽器何時更新 hover 狀態（CI 較慢時會在 Escape 之後才補發）。
   // 先把游標移離圖表，讓 tooltip 只由 focus／Escape 決定。
@@ -421,6 +423,7 @@ async function runSupply(browser,base,width=1440){
   await segment.focus();
   assert.equal(await page.locator('#supply-tooltip').isVisible(),true);
   assert.ok((await page.locator('#supply-tooltip').innerText()).endsWith(share(peerMonths[peerMonth],data.monthly.total[peerMonth])),'peer tooltip must use the month total');
+  assert.match(await page.locator('#supply-tooltip').innerText(),/\$[\d,]+(\.\d{1,2})?bn/,'tooltip $bn must allow up to 2 decimals');
   await segment.press('Escape');
   assert.equal(await page.locator('#supply-tooltip').isHidden(),true);
   await segment.click();
@@ -429,9 +432,9 @@ async function runSupply(browser,base,width=1440){
   assert.equal(await page.locator('.breakdown-card').count(),3);
   for(let index=0;index<3;index++){
     const card=page.locator('.breakdown-card').nth(index);
-    assert.equal(await card.locator('tfoot td').nth(1).innerText(),billion(data.ytd_usd));
+    assert.equal(await card.locator('tfoot td').nth(1).innerText(),detailBillion(data.ytd_usd));
     assert.equal(await card.locator('tfoot td').nth(2).innerText(),'100.00%');
-    for(const value of await card.locator('tbody td:nth-child(2)').allInnerTexts()) assert.match(value,/^\d{1,3}(,\d{3})*$/,`${value} must render as whole $bn`);
+    for(const value of await card.locator('tbody td:nth-child(2)').allInnerTexts()) assert.match(value,/^\d{1,3}(,\d{3})*(\.\d{1,2})?$/,`${value} must render as $bn with at most 2 decimals`);
     const displayed=(await card.locator('tbody td:nth-child(3)').allInnerTexts()).reduce((sum,value)=>sum+Number(value.replace('%','')),0);
     assert.equal(displayed.toFixed(2),'100.00');
   }
