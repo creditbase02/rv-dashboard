@@ -92,6 +92,13 @@ async function run(browser, base, width = 1440) {
   assert.equal(await utilityRow.locator('td').nth(0).locator('.forecast-broker-tag').innerText(),'BofA');
   assert.equal(await healthcareRow.locator('td').nth(1).locator('.forecast-broker-tag').innerText(),'BofA');
   assert.equal(await insuranceRow.locator('td').nth(0).locator('.forecast-broker-tag').innerText(),'TD＊');
+  await page.locator('[name=section][value="Non-Cyclical"]').check();
+  const utilityBar=page.locator('.rv-point[data-sector="Utility"][data-metric="Spread"][data-field="pct"]');
+  await utilityBar.hover();
+  assert.match(await page.locator('#rv-tooltip').innerText(),/券商 OW 1 家／UW 0 家/);
+  await utilityBar.click();
+  assert.equal(await utilityRow.evaluate(row=>row.classList.contains('forecast-sector-target')),true);
+  assert.equal(await utilityRow.evaluate(row=>document.activeElement===row),true);
   await utilityRow.locator('.forecast-broker-tag').click();
   assert.match(await utilityRow.locator('.forecast-broker-detail').innerText(),/Utilities/);
   assert.equal(await utilityRow.locator('.forecast-broker-detail a').getAttribute('href'),'https://creditbase02.github.io/ib-knowledge-base/reports/bofa/');
