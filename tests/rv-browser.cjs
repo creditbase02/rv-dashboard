@@ -295,9 +295,9 @@ async function runSupply(browser,base,width=1440){
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const topRows=panel=>page.locator(`${panel} tbody tr`).evaluateAll(rows=>rows.map(row=>[...row.children].map(cell=>cell.innerText)));
   assert.equal(await page.locator('#ytd-value').innerText(),`$${billion(data.ytd_usd)}`);
-  assert.equal(await page.locator('#ytd-value').innerText(),'$1,629');
+  assert.equal(await page.locator('#ytd-value').innerText(),'$1,647');
   assert.equal(await page.locator('#mtd-value').innerText(),`$${billion(data.mtd_usd)}`);
-  assert.equal(await page.locator('#mtd-value').innerText(),'$139');
+  assert.equal(await page.locator('#mtd-value').innerText(),'$158');
   assert.equal(await page.locator('#ytd-top-tickers').isHidden(),true);
   await page.locator('[data-forecast-view=supply]:not([hidden])').waitFor();
   assert.equal(await page.locator('[data-forecast-year]').innerText(),'2026');

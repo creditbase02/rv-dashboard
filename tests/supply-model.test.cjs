@@ -10,7 +10,7 @@ const clone = value => structuredClone(value);
 
 test('Supply browser model accepts the approved compact snapshot', () => {
   assert.ok([2,3].includes(data.schema_version));
-  assert.equal(model.validateSnapshot(clone(data)).row_count, 1620);
+  assert.equal(model.validateSnapshot(clone(data)).row_count, 1639);
   if(data.schema_version===3)assert.deepEqual(data.breakdowns.tenor.map(row => row[0]), model.TENOR_BUCKETS);
   for (const field of ['industry', 'rating', 'tenor']) {
     assert.equal(model.reconciledPercentages(data.breakdowns[field], data.ytd_usd).reduce((a, b) => a + b, 0), 10000);

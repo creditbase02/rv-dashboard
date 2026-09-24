@@ -348,8 +348,15 @@ async function publishData(env, data, definition) {
     }, token);
   } catch (error) {
     if (error.status !== 422) throw error;
-    const existing = await githubFetch(env, `/repos/${repo}/pulls?state=all&head=${encodeURIComponent(repo.split('/')[0] + ':' + branch)}`, {}, token);
-    if (existing[0]) return {id: String(existing[0].number), state: existing[0].merged_at ? 'merged' : existing[0].state};
+    // A browser may retry after losing the response while the first request is
+    // still creating the PR.  The deterministic data branch makes publishing
+    // idempotent; briefly wait for that in-flight PR instead of reporting a
+    // false duplicate failure.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const existing = await githubFetch(env, `/repos/${repo}/pulls?state=all&head=${encodeURIComponent(repo.split('/')[0] + ':' + branch)}`, {}, token);
+      if (existing[0]) return {id: String(existing[0].number), state: existing[0].merged_at ? 'merged' : existing[0].state};
+      if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 500));
+    }
     throw new Error('相同資料 branch 已存在，但找不到對應 PR');
   }
   try {

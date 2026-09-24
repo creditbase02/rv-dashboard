@@ -180,6 +180,8 @@ class RVTests(unittest.TestCase):
 
     def test_automated_pr_triggers_one_main_deployment(self):
         workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        self.assertIn("format('pr-{0}', github.event.pull_request.number)", workflow)
+        self.assertNotIn("group: rv-dashboard-pages", workflow)
         self.assertIn("github.event.action == 'labeled'", workflow)
         self.assertIn("github.event.label.name == 'automated-rv-data'", workflow)
         self.assertIn("actions: write", workflow)
