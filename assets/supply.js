@@ -24,6 +24,8 @@
   };
   const bn=value=>value/1e9;
   const amount=value=>new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(bn(value));
+  // 圖上數值標籤／tooltip／表格（breakdown、Top 5）允許到小數第二位；上方 KPI 與座標軸刻度維持整數。
+  const amountDetail=value=>new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(bn(value));
   const pct=(value,total)=>`${(total?value/total*100:0).toFixed(2)}%`;
   const topMap=scope=>Object.fromEntries(data.top_tickers.ytd[scope].map(([name,pairs])=>[name,pairs]));
 
@@ -33,7 +35,7 @@
     const strong=document.createElement('strong');
     const span=document.createElement('span');
     strong.textContent=title;
-    span.textContent=`$${amount(value)}bn · ${pct(value,total)}`;
+    span.textContent=`$${amountDetail(value)}bn · ${pct(value,total)}`;
     tip.append(strong,span);
     tip.hidden=false;
     const box=target.getBoundingClientRect();
@@ -44,7 +46,7 @@
   }
   function bindBar(element,label,value,total,onActivate,selected=false,basis='所選分類'){
     element.setAttribute('tabindex','0');
-    element.setAttribute('aria-label',`${label}：$${amount(value)}bn，佔${basis} ${pct(value,total)}`);
+    element.setAttribute('aria-label',`${label}：$${amountDetail(value)}bn，佔${basis} ${pct(value,total)}`);
     element.setAttribute('aria-describedby','supply-tooltip');
     if(selected)element.classList.add('selected');
     element.addEventListener('pointerenter',event=>{if(event.pointerType!=='touch')showTip(element,label,value,total,event);});
@@ -82,7 +84,7 @@
       row.innerHTML='<td></td><th scope="row"></th><td></td><td></td>';
       row.children[0].textContent=String(index+1);
       row.children[1].textContent=ticker;
-      row.children[2].textContent=amount(value);
+      row.children[2].textContent=amountDetail(value);
       row.children[3].textContent=pct(value,selection.total);
       body.append(row);
     });
@@ -121,7 +123,7 @@
       const bar=svgEl('rect',{x,y,width:barWidth,height:h,rx:3,fill:colors[index%colors.length],class:'supply-bar','data-category':name,'data-value':value});
       const key=scope?`${scope}:${name}`:'';
       bindBar(bar,name,value,data.ytd_usd,clickable&&scope?()=>toggleYtdSelection(scope,name,value,tops[name]||[]):null,ytdSelection?.key===key,'YTD 總量');
-      svg.append(bar,svgEl('text',{x:x+barWidth/2,y:y-7,'text-anchor':'middle',class:'bar-value'},amount(value)));
+      svg.append(bar,svgEl('text',{x:x+barWidth/2,y:y-7,'text-anchor':'middle',class:'bar-value'},amountDetail(value)));
       const text=svgEl('text',{x:x+barWidth/2,y:top+plotHeight+18,'text-anchor':'middle',class:'bar-label'}),words=name.split(/\s+/);
       if(name.length>12&&words.length>1){const midpoint=Math.ceil(words.length/2);text.append(svgEl('tspan',{x:x+barWidth/2},words.slice(0,midpoint).join(' ')),svgEl('tspan',{x:x+barWidth/2,dy:14},words.slice(midpoint).join(' ')));}
       else text.textContent=name;
@@ -187,8 +189,8 @@
       const heading=document.createElement('h3');heading.textContent=labels[field];
       const table=document.createElement('table');table.innerHTML='<thead><tr><th scope="col">Category</th><th scope="col">$bn</th><th scope="col">%</th></tr></thead><tbody></tbody><tfoot><tr><td>Total</td><td></td><td>100.00%</td></tr></tfoot>';
       const body=table.querySelector('tbody'),records=data.breakdowns[field],percentages=window.SupplyModel.reconciledPercentages(records,data.ytd_usd);
-      records.forEach(([name,value],index)=>{const row=document.createElement('tr');row.innerHTML='<th scope="row"></th><td></td><td></td>';row.children[0].textContent=name;row.children[1].textContent=amount(value);row.children[2].textContent=`${(percentages[index]/100).toFixed(2)}%`;body.append(row);});
-      table.querySelector('tfoot td:nth-child(2)').textContent=amount(data.ytd_usd);section.append(heading,table);return section;
+      records.forEach(([name,value],index)=>{const row=document.createElement('tr');row.innerHTML='<th scope="row"></th><td></td><td></td>';row.children[0].textContent=name;row.children[1].textContent=amountDetail(value);row.children[2].textContent=`${(percentages[index]/100).toFixed(2)}%`;body.append(row);});
+      table.querySelector('tfoot td:nth-child(2)').textContent=amountDetail(data.ytd_usd);section.append(heading,table);return section;
     }));
   }
   function render(){
