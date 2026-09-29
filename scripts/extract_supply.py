@@ -128,22 +128,8 @@ def extract(workbook: Path, peer_workbook: Path | None = None, peer_definitions:
     if list(year_counts.values()).count(main_count) > 1:
         raise ValueError("Supply workbook has no unique primary year")
     corrections = []
-    valid_year_rows = [record for record in records if record["date"].year == main_year]
-    for record in records:
-        if record["date"].year == main_year:
-            continue
-        candidates = [candidate for candidate in valid_year_rows if candidate["ticker"] == record["ticker"]]
-        if not candidates:
-            raise ValueError(f"Supply row {record['row']} has no same-ticker {main_year} date candidate")
-        distances = sorted(
-            ((abs(candidate["row"] - record["row"]), candidate) for candidate in candidates),
-            key=lambda item: (item[0], item[1]["row"]),
-        )
-        if len(distances) > 1 and distances[0][0] == distances[1][0]:
-            raise ValueError(f"Supply row {record['row']} has tied same-ticker date candidates")
-        replacement = distances[0][1]["date"]
-        corrections.append({"row": record["row"], "ticker": record["ticker"], "from": record["date"].isoformat(), "to": replacement.isoformat()})
-        record["date"] = replacement
+    if any(record["date"].year != main_year for record in records):
+        raise ValueError("Supply non-current-year Pricing Date requires explicit review; no inferred dates")
 
     peer_lookup = {
         ticker: definition["name"]

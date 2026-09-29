@@ -199,6 +199,7 @@
     document.querySelector('#ytd-value').textContent=`$${amount(data.ytd_usd)}`;
     document.querySelector('#mtd-value').textContent=`$${amount(data.mtd_usd)}`;
     document.querySelector('#row-count').textContent=new Intl.NumberFormat('en-US').format(data.row_count);
+    document.querySelector('#supply-locked-through').textContent=data.lock?`已核對並鎖定至 ${data.lock.through.replaceAll('-','/')}；之後資料尚未封帳。`:'';
     document.querySelector('#quality-summary').textContent=`${data.quality.date_corrections} 筆日期校正 · ${data.quality.duplicate_cusip_groups} 組重複 CUSIP`;
     const supplySummary=Object.freeze({date:data.date,ytd_usd:data.ytd_usd,mtd_usd:data.mtd_usd});
     window.RVSupplySummary=supplySummary;

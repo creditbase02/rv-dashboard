@@ -1,3 +1,6 @@
+import lockConfig from '../../assets/supply-lock.json' with {type:'json'};
+import {reconcile} from './supply-lock.js';
+import {digest,signSnapshot,verifySnapshot} from './supply-proof.js';
 const METRICS = ['Spread', '10Y', '30Y', '10s30s'];
 const FIELDS = ['min', 'median', 'max', 'current', 'pct'];
 const LUAC_COLUMNS = ['id','security_des','issuer','ticker','maturity','rating','maturity_years','oas_bp','yield_pct','industry','flags'];
@@ -181,8 +184,12 @@ function validateSupplyTop(value, name, denominator) {
 }
 
 export function validateSupplySnapshot(data, allowLegacy = false) {
+  if(data?.lock){
+    if(!sameKeys(data.lock,['version','through','parent','signature'])||!validIsoDate(data.lock.through)||!/^[A-Za-z0-9-]{1,80}$/.test(data.lock.version)||!/^[a-f0-9]{64}$/.test(data.lock.parent)||!/^[A-Za-z0-9+/]{86}==$/.test(data.lock.signature))throw Error('Supply 鎖定資料結構不正確');
+    data={...data};delete data.lock;
+  }
   const fields = ['schema_version','date','year','currency','row_count','ytd_usd','mtd_usd','breakdowns','monthly','peer_definitions','peer_tickers','top_tickers','quality'];
-  if (!sameKeys(data, fields) || (data.schema_version !== 3 && !(allowLegacy && data.schema_version === 2)) || data.currency !== 'USD' || !validIsoDate(data.date) || data.year !== Number(data.date.slice(0, 4))) throw new Error('Supply 公開資料欄位不正確');
+  if (!sameKeys(data, fields) || (data.schema_version !== 4 && !(allowLegacy && [2,3].includes(data.schema_version))) || data.currency !== 'USD' || !validIsoDate(data.date) || data.year !== Number(data.date.slice(0, 4))) throw new Error('Supply 公開資料欄位不正確');
   if (!Number.isInteger(data.row_count) || data.row_count < 1 || data.row_count > 100000 || !Number.isSafeInteger(data.ytd_usd) || data.ytd_usd <= 0 || !Number.isSafeInteger(data.mtd_usd) || data.mtd_usd < 0 || data.mtd_usd > data.ytd_usd) throw new Error('Supply 摘要數值無效');
   if (!sameKeys(data.breakdowns, ['industry','rating','tenor','peer_group'])) throw new Error('Supply breakdown 結構不正確');
   for (const name of ['industry','rating','tenor','peer_group']) if (validateSupplyPairs(data.breakdowns[name], name) !== data.ytd_usd) throw new Error(`Supply ${name} 無法勾稽 YTD`);
@@ -319,7 +326,7 @@ async function addAutomationLabel(env, repo, number, token, label) {
 }
 
 async function publishData(env, data, definition) {
-  const validation = definition.validate(data);
+  let validation = definition.prepare ? null : definition.validate(data);
   const repo = env.GITHUB_REPOSITORY;
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo || '')) throw new Error('Worker repository 設定不正確');
   const production = env.PUBLISH_MODE === 'production';
@@ -329,6 +336,7 @@ async function publishData(env, data, definition) {
   const encoded = current.content || (await githubFetch(env, `/repos/${repo}/git/blobs/${current.sha}`, {}, token)).content;
   const currentData = JSON.parse(decodeGithubContent(encoded));
   (definition.validateCurrent || definition.validate)(currentData);
+  if (definition.prepare) { data=await definition.prepare(data,currentData); validation=definition.validate(data); }
   if (data.date < currentData.date || (data.date === currentData.date && !definition.allowSameDate)) {
     throw new Error(definition.allowSameDate
       ? `${definition.name} 資料日期 ${data.date} 不得早於正式站 ${currentData.date}`
@@ -413,8 +421,33 @@ function checkSupplyDrift(data, currentData) {
   }
 }
 
+export async function prepareLockedSupply(env, upload, currentData, persist=false, config=lockConfig) {
+  if(!env.SUPPLY_PRIVATE || !env.SUPPLY_SIGNING_KEY) throw Error('Supply 鎖定服務尚未配置，保留線上版本');
+  await verifySnapshot(currentData,config);
+  if(upload?.as_of>new Date().toISOString().slice(0,10))throw Error('Supply 截止日不得晚於今天');
+  const parent=await digest(currentData);
+  if(upload?.parent!==parent) throw Error('Supply 線上版本已變動，請重新載入並驗證');
+  const baseline=await env.SUPPLY_PRIVATE.get(`baseline:${config.version}`,'json');
+  if(baseline?.version!==config.version||baseline?.through!==config.through)throw Error('Supply 私人基準版本不符');
+  const prior= currentData.lock.parent==='0'.repeat(64) ? [] : await env.SUPPLY_PRIVATE.get(`tail:${parent}`,'json');
+  if(!Array.isArray(prior))throw Error('Supply 前版核對紀錄缺失，保留線上版本');
+  const {parent:ignoredParent,...input}=upload;
+  const result=reconcile(baseline,input,prior);
+  if(result.data.date<currentData.date)throw Error('Supply 截止日不得倒退');
+  const data=await signSnapshot(result.data,config,parent,JSON.parse(env.SUPPLY_SIGNING_KEY));
+  await verifySnapshot(data,config);validateSupplySnapshot(data);checkSupplyDrift(data,currentData);
+  if(persist)await env.SUPPLY_PRIVATE.put(`tail:${await digest(data)}`,JSON.stringify(result.tail));
+  return {data,ignored:result.ignored};
+}
+async function previewSupply(env,upload){
+  const token=await installationToken(env),base=env.PUBLISH_MODE==='production'?'main':(env.PREVIEW_BASE_REF||'main');
+  const current=await githubFetch(env,`/repos/${env.GITHUB_REPOSITORY}/contents/assets/supply-data.json?ref=${encodeURIComponent(base)}`,{},token);
+  const encoded=current.content||(await githubFetch(env,`/repos/${env.GITHUB_REPOSITORY}/git/blobs/${current.sha}`,{},token)).content;
+  return prepareLockedSupply(env,upload,JSON.parse(decodeGithubContent(encoded)));
+}
 export async function publishSupplySnapshot(env, data) {
   return publishData(env, data, {
+    prepare: async (upload,current)=> (await prepareLockedSupply(env,upload,current,true)).data,
     name: 'Supply', path: 'assets/supply-data.json', branch: 'supply-data', compact: true,
     productionLabel: 'automated-supply-data', previewLabel: 'supply-data-preview',
     validate: value => validateSupplySnapshot(value), validateCurrent: value => validateSupplySnapshot(value, true), checkCurrent: checkSupplyDrift, allowSameDate: true,
@@ -487,20 +520,22 @@ export async function handleRequest(request, env) {
   const supplyMatch = /^\/status\/supply\/(\d+)$/.exec(url.pathname);
   const rvPublish = url.pathname === '/publish' && request.method === 'POST';
   const luacPublish = url.pathname === '/publish/luac' && request.method === 'POST';
+  const supplyPreview = url.pathname === '/validate/supply' && request.method === 'POST';
   const supplyPublish = url.pathname === '/publish/supply' && request.method === 'POST';
-  if (rvPublish || luacPublish || supplyPublish || ((match || luacMatch || supplyMatch) && request.method === 'GET')) {
+  if (rvPublish || luacPublish || supplyPublish || supplyPreview || ((match || luacMatch || supplyMatch) && request.method === 'GET')) {
     const bearer = /^Bearer (.+)$/.exec(request.headers.get('authorization') || '')?.[1];
     if (!await verifySession(bearer, env.SESSION_SECRET)) return json({error: '登入已過期，請重新輸入密碼'}, 401, cors);
     if (match) return json(await status(env, match[1]), 200, cors);
     if (luacMatch) return json(await statusLuac(env, luacMatch[1]), 200, cors);
     if (supplyMatch) return json(await statusSupply(env, supplyMatch[1]), 200, cors);
-    if ((rvPublish && env.RV_UPLOAD_ENABLED !== 'true') || (luacPublish && env.LUAC_UPLOAD_ENABLED !== 'true') || (supplyPublish && env.SUPPLY_UPLOAD_ENABLED !== 'true')) {
+    if ((rvPublish && env.RV_UPLOAD_ENABLED !== 'true') || (luacPublish && env.LUAC_UPLOAD_ENABLED !== 'true') || ((supplyPublish||supplyPreview) && env.SUPPLY_UPLOAD_ENABLED !== 'true')) {
       return json({error: '發布功能尚未啟用'}, 503, cors);
     }
     const rate = await env.PUBLISH_RATE_LIMITER.limit({key: await digestText(bearer)});
     if (!rate.success) return json({error: '發布次數過多，請一分鐘後再試'}, 429, cors);
-    const body = await readJson(request, luacPublish ? 4 * 1024 * 1024 : 262144);
+    const body = await readJson(request, (luacPublish||supplyPublish||supplyPreview) ? 4 * 1024 * 1024 : 262144);
     if (!sameKeys(body, ['data'])) return json({error: '只接受公開摘要 data，不接受檔案或來源資訊'}, 400, cors);
+    if(supplyPreview)return json(await previewSupply(env,body.data),200,{'cache-control':'no-store',...cors});
     const result = luacPublish ? await publishLuacSnapshot(env, body.data) : supplyPublish ? await publishSupplySnapshot(env, body.data) : await publishSnapshot(env, body.data);
     return json(result, 202, cors);
   }

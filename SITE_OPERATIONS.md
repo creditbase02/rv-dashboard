@@ -20,7 +20,7 @@
 
 正式站的「更新資料」頁固定接受 Spread、10Y、30Y、10s30s 四份 `.xlsx`。瀏覽器必須確認 460 個數值完整、92 個內嵌日期一致、percentile 在 0–100% 內，且每筆符合 Min ≤ Median ≤ Max。資料日期必須晚於正式站；同日修正仍走人工 PR。
 
-原始工作簿只在瀏覽器記憶體解析。網路 request 只能包含 `{data: <public snapshot>}`，不得包含工作簿 bytes、檔名、路徑或來源雜湊。Worker 會重做同一套 schema 與數值驗證。
+原始工作簿只在瀏覽器記憶體解析。RV／LUAC 網路 request 只能包含 `{data: <public snapshot>}`，不得包含工作簿 bytes、檔名、路徑或來源雜湊。Worker 會重做同一套 schema 與數值驗證。
 
 自動資料 PR 的安全條件全部成立才可合併：
 
@@ -59,22 +59,27 @@ python scripts/probe_bloomberg_luac.py --known-security "<approved Bloomberg ID>
 
 ### IG Supply 資料
 
-Supply 來源是獨立 `.xlsx`，必要欄位為 `BB ID`、`CUSIP`、`Ticker`、`Corp Ticker`、`Pricing Date`、`Tranche Size`、`Tenor`、`Ind Sector` 與 `BB Composite`。所有列都保留並計入，包括重複 CUSIP 與同日不同金額；公開品質摘要只保存重複 CUSIP 群組數，不保存逐券資料或完整異常明細。
+Supply 使用「私人鎖定基準＋未鎖定期間整段替換」。初始版本 `reviewed-20260925-v1` 鎖定至 2026/09/25，YTD 1,646,875,719,000 USD，9月 163,800,000,000 USD；1,651個發行事件包含JBS原發行與增額拆分，不能以來源列數推斷交易數。Athene等原稽核證據限制保留於私人報告，未為符合外部四捨五入數字改變統計範圍。
 
-舊年份 Pricing Date 視為增額發行。抽取器會在 Excel 列位置中尋找距離最近、同 `Corp Ticker`、主年份有效日期的記錄；找不到候選或最近距離平手時整批拒絕。FRN 先依 `Ticker` 欄的 `FLOAT`／`FRN` 標記辨識，PERP 只依 `Ticker` 欄的 `PERP` 標記歸入 `Perpetual`；其餘固定券依數值 Tenor 分成 3yr & In、5yr、7yr、10yr、20yr、30yr 與 >32yr，無法辨識則拒絕。
+來源必要欄位仍為 `BB ID`、`CUSIP`、`Ticker`、`Corp Ticker`、`Pricing Date`、`Tranche Size`、`Tenor`、`Ind Sector`、`BB Composite`。不再依相鄰列推定日期。所有已鎖定識別碼及原始錯誤別名先匹配；截止日前資料不能替換基準。疑似舊券改期或同CUSIP增額必須先核對；有證據的新增額以私人基準中的精確 `approved_events` 核准，不能只核准一個CUSIP。重複發行事件整批拒絕。
 
-Peer mapping 是含 `TICKER` 與 `Peer Group` 兩欄的選填 Excel。網頁未提供時沿用目前公開快照內的 mapping；有提供時會拒絕空值、公式與 ticker 衝突。命令列抽取範例：
+Supply 是一般上傳契約的明確例外：原始Excel與檔名、路徑不離開瀏覽器；登入後將識別碼SHA-256及定價日、金額、產業、評級、期限bucket、公司ticker送往私人服務。雜湊不是匿名化，這些最小核對資料不得寫入公開資產、PR或日誌。RV與LUAC原有上傳契約不變。私人台帳及基準位於repo外；Worker的`SUPPLY_PRIVATE` KV保存不公開的基準與未鎖定事件，沒有瀏覽器寫入基準的API。`SUPPLY_SIGNING_KEY`是Ed25519私人JWK secret，僅公鑰存於`assets/supply-lock.json`。
 
-```sh
-python3 scripts/extract_supply.py <Supply.xlsx> \
-  --peers <Peer-Groups.xlsx> \
-  --output assets/supply-data.json \
-  --audit <repo之外>/supply-audit.json
-```
+更新頁須輸入資料截止日、確認完整未鎖定期間並登入。`POST /validate/supply`與`POST /publish/supply`都接收 `{data:{baseline_version,parent,as_of,complete,records}}`，都重新合併及驗證私人基準。前者只回公開預覽與忽略筆數，後者只將簽章公開彙總寫入資料PR。截止日不能倒退；跨年須人工建立新年度基準。前版已發布的未鎖定事件不得缺列或改期；使用者仍須確認尚未被任何清單捕捉的新發行完整性。上傳新Peer mapping不得改寫歷史分類，Supply需先清除該選取。
 
-公開 Supply schema v3 只含日期、主年份、筆數、YTD／MTD 整數 USD、Industry／Rating／Tenor／Peer Group 彙總、12 個月總量與 Peer Group 堆疊、已定義群組的 ticker 彙總、各分類與月份最多五筆的聚合 ticker、mapping 與安全品質計數。未定義群組統一命名為 `Other IG`。自動更新允許同日更正，但日期不得早於正式站，且筆數與 YTD 金額相較前版都必須在 ±20% 內；超出時改走人工 PR。
+公開schema v4保留既有彙總欄位，新增`lock`：版本、截止日、前版公開快照digest與服務簽章。無逐券記錄或識別雜湊。Top 5以私人完整事件重算，不拼接兩份Top 5。基準的金額、日期及分類不隨新Excel更新；YTD、占比及排行會因新增交易正常改變。頁面分別顯示資料日與核對鎖定日。跨站manifest維持既有介面。
 
-Supply 自動資料 PR 的安全條件為：作者等於 `RV_UPLOAD_APP_LOGIN`、branch 以 `automation/supply-data-` 開頭、label 為 `automated-supply-data`、diff 只有 `assets/supply-data.json`，且 Supply 快速 CI 通過。`SUPPLY_UPLOAD_ENABLED` 與網站 `supply_enabled` 是獨立開關，目前兩者均已啟用。可信任的 Supply 單檔更新只跑快速資料格式與發布一致性驗證，不重跑完整網站、Worker 或瀏覽器測試。
+`assets/supply-lock.json`只可經人工PR升版。建置驗證Ed25519簽章；快速CI另驗證parent必須等於當前基準版本的前一公開快照，防止並行上傳以舊版本覆蓋新資料。缺失私人基準、簽章key、前版事件、版本不符或未決識別問題均停止發布。保留±20%變動、256KiB公開資產限制及原有可信任單檔PR條件。變更程式或基準設定仍跑完整CI。
+
+#### 月底封帳／維運
+
+1. 在repo外核對未鎖定期間，保存證據與修正；保留每筆既有基準記錄及原始識別別名，追加新事件。新版本不得改變舊基準記錄或Peer mapping。新年份獨立建立基準，舊年度永久歸檔。
+2. 使用 `node scripts/seal_supply_baseline.mjs --baseline <私人新基準.json> --previous <私人舊基準.json> --key <私人簽章key.json> --output <repo外目錄>` 產生簽章彙總；工具拒絕改寫已封帳事件。僅將輸出的兩份公開檔複製至assets。
+3. 先以Wrangler將私人新基準寫入獨立KV key `baseline:<新版本>`；普通上傳無權覆蓋。保留舊key及私人離線備份。人工PR包含新lock設定與公開彙總，完整CI通過後合併。
+4. Worker需同步部署以採用新版本／公鑰，版本切換期間服務安全拒絕上傳，頁面顯示重新載入；部署完成後驗證health、私有核對與公開簽章。不得刪除舊私人基準或歷史公開快照。
+5. `tail:<公開快照digest>`於建立PR前保存；PR失敗留下的孤立key無法影響正式版本。缺少已發布快照的tail紀錄時停止更新，從私人備份還原，不用新Excel猜測。當並行PR的parent過期時，重新載入並驗證完整新清單。
+
+首次部署先備份現行Worker版本、配置KV基準與簽章secret；完整CI通過後透過PR發布基準，部署Worker並驗證。回復須同時匹配前版公開基準、Worker及私人KV key，不得只關閉鎖定驗證。
 
 ### 人工抽取（含投影片 fallback）
 

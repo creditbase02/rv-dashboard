@@ -96,6 +96,9 @@ jobs:
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
           echo "Validation mode: $mode"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Build site for fast data validation
         if: steps.validation.outputs.mode == 'data' || steps.validation.outputs.mode == 'luac-data' || steps.validation.outputs.mode == 'supply-data'
         run: python3 publish.py --build-only
@@ -138,10 +141,6 @@ jobs:
             --current assets/supply-data.json \
             --previous "$RUNNER_TEMP/supply-data-previous.json" \
             --public-root public
-      - uses: actions/setup-node@v4
-        if: steps.validation.outputs.mode == 'full'
-        with:
-          node-version: "22"
       - uses: pnpm/action-setup@v4
         if: steps.validation.outputs.mode == 'full'
         with:
@@ -299,6 +298,9 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       startsWith(github.event.pull_request.head.ref, 'automation/supply-data-') &&
       contains(github.event.pull_request.labels.*.name, 'automated-supply-data')
+    concurrency:
+      group: supply-locked-merge
+      cancel-in-progress: false
     needs: tests
     runs-on: ubuntu-latest
     permissions:
@@ -312,6 +314,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: gh pr diff "$PR_URL" --name-only | python3 scripts/verify_supply_data_only_pr.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Recheck locked parent against latest main
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          git show origin/main:assets/supply-data.json > "$RUNNER_TEMP/supply-latest.json"
+          node scripts/verify_supply_lock.mjs assets/supply-data.json "$RUNNER_TEMP/supply-latest.json"
       - name: Enable verified Supply data auto-merge
         env:
           GH_TOKEN: ${{ github.token }}

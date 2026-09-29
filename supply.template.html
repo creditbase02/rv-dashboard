@@ -20,7 +20,7 @@
     <section class="supply-kpis" aria-label="Issuance summary">
       <article><p id="ytd-label">YTD Issuance</p><strong id="ytd-value">—</strong><small>USD billion</small><small class="supply-kpi-comparison" id="ytd-forecast-comparison" hidden></small></article>
       <article><p id="mtd-label">MTD Issuance</p><strong id="mtd-value">—</strong><small>USD billion</small><small class="supply-kpi-comparison" id="mtd-forecast-comparison" hidden></small></article>
-      <article><p>Included records</p><strong id="row-count">—</strong><small id="quality-summary">Validated Excel rows</small></article>
+      <article><p>Included records</p><strong id="row-count">—</strong><p id="supply-locked-through" aria-live="polite"></p><small id="quality-summary">Validated Excel rows</small></article>
     </section>
     <section class="forecast-runtime" data-forecast-feed data-forecast-view="supply" data-forecast-manifest="{{FORECAST_MANIFEST_URL}}" hidden aria-labelledby="supply-forecast-title"><header class="forecast-heading"><div><p class="section-label">BROKER FORECAST / US IG</p><h2 id="supply-forecast-title"><span data-forecast-year></span> 券商供給預估</h2><p>全年、當月 gross supply 與 hyperscaler issuance house calls；不同口徑不加總。</p></div><a data-forecast-tracker href="https://creditbase02.github.io/ib-knowledge-base/forecast/">完整 Forecast Tracker →</a></header><p class="forecast-status" data-forecast-status role="status" aria-live="polite"></p><div data-forecast-body></div></section>
 
@@ -44,7 +44,7 @@
       <div class="breakdown-heading"><p class="section-label">YTD TABLES</p><h2 id="breakdown-title">Issuance Breakdown</h2><p>每張表的發行量加總為 YTD，佔比加總為 100%。</p></div>
       <div id="breakdown-tables" class="breakdown-grid"></div>
     </section>
-    <aside class="supply-note"><h2>資料口徑</h2><p>YTD 與 MTD 以已驗證 Excel 內的 Pricing Date 與 Tranche Size 計算。增額發行沿用舊年份日期時，依工作表中列距離最近的同 ticker 當年發行日校正。重複 CUSIP 保留並全數計入。</p></aside>
+    <aside class="supply-note"><h2>資料口徑</h2><p>YTD 與 MTD 由已核對鎖定基準，加上截止日後的發行資料計算。後續 Excel 不會覆蓋鎖定期間的金額、定價日或分類。增額發行按本次新增本金計入；疑似重複或日期異常須先核對，不自動推定。</p></aside>
   </main>
   <div id="supply-tooltip" class="supply-tooltip" role="tooltip" hidden></div>
   <script src="assets/supply-model.js?v={{SUPPLY_VERSION}}" defer></script>

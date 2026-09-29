@@ -4,7 +4,7 @@
   else root.SupplyModel=model;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const SCHEMA_VERSION=3;
+  const SCHEMA_VERSION=4;
   const TENOR_BUCKETS=['FRN','3yr & In (1.5–3.5yr)','5yr (3.5–6yr)','7yr (6–8yr)','10yr (8–12yr)','20yr (12–22yr)','30yr (22–32yr)','>32yr (>32yr)','Perpetual'];
   const LEGACY_TENOR_BUCKETS=['FRN','≤5Y','>5Y–10Y','>10Y / Perpetual'];
   const RATING_ORDER=['AAA','AA+','AA','AA-','A+','A','A-','BBB+','BBB','BBB-','BB+','BB','BB-','B+','B','B-','CCC+','CCC','CCC-','CC','C','D','NR'];
@@ -38,9 +38,10 @@
     return floors;
   }
   function validateSnapshot(data){
+    if(data?.lock&&(!keys(data.lock,['version','through','parent','signature'])||!iso(data.lock.through)||!/^[A-Za-z0-9-]{1,80}$/.test(data.lock.version)||!/^[a-f0-9]{64}$/.test(data.lock.parent)||!/^[A-Za-z0-9+/]{86}==$/.test(data.lock.signature)))throw Error('Supply 鎖定資料結構不正確');
     const fields=['schema_version','date','year','currency','row_count','ytd_usd','mtd_usd','breakdowns','monthly','peer_definitions','peer_tickers','top_tickers','quality'];
-    if(!keys(data,fields)||data.currency!=='USD'||!iso(data.date)||data.year!==Number(data.date.slice(0,4)))throw Error('Supply 公開資料結構不正確');
-    if(![2,SCHEMA_VERSION].includes(data.schema_version))throw Error('Supply schema_version 不支援');
+    if(!keys(data,data.lock?[...fields,'lock']:fields)||data.currency!=='USD'||!iso(data.date)||data.year!==Number(data.date.slice(0,4)))throw Error('Supply 公開資料結構不正確');
+    if(![2,3,SCHEMA_VERSION].includes(data.schema_version))throw Error('Supply schema_version 不支援');
     if(!Number.isInteger(data.row_count)||data.row_count<1||!usd(data.ytd_usd)||!data.ytd_usd||!usd(data.mtd_usd)||data.mtd_usd>data.ytd_usd)throw Error('Supply 摘要數值無效');
     if(!keys(data.breakdowns,['industry','rating','tenor','peer_group']))throw Error('Supply breakdown 結構不正確');
     for(const name of ['industry','rating','tenor','peer_group'])if(pairs(data.breakdowns[name],name)!==data.ytd_usd)throw Error(`Supply ${name} 無法勾稽 YTD`);
