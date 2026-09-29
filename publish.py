@@ -105,6 +105,7 @@ def build() -> tuple[Path, dict]:
     from supply_data import validate_supply
     supply = json.loads((ROOT / "assets" / "supply-data.json").read_text(encoding="utf-8"))
     validate_supply(supply)
+    subprocess.run(["node", str(ROOT / "scripts/verify_supply_lock.mjs"), str(ROOT / "assets/supply-data.json")], check=True)
     template = (ROOT / "index.template.html").read_text(encoding="utf-8")
     forecast_version = asset_version(
         ROOT / "assets" / "forecast-model.js",

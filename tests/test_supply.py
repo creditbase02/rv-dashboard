@@ -47,14 +47,14 @@ class SupplyTests(unittest.TestCase):
 
     def test_initial_snapshot_matches_approved_acceptance_values(self):
         result = validate_supply(self.data)
-        self.assertIn(self.data["schema_version"], (2, 3))
-        self.assertEqual(self.data["date"], "2026-09-22")
+        self.assertIn(self.data["schema_version"], (2, 3, 4))
+        self.assertEqual(self.data["date"], "2026-09-25")
         self.assertEqual(self.data["year"], 2026)
-        self.assertEqual(self.data["row_count"], 1639)
+        self.assertEqual(self.data["row_count"], 1651)
         self.assertEqual(self.data["ytd_usd"], 1_646_875_719_000)
-        self.assertEqual(self.data["mtd_usd"], 157_550_000_000)
+        self.assertEqual(self.data["mtd_usd"], 163_800_000_000)
         self.assertEqual(result["date_corrections"], 5)
-        self.assertEqual(result["duplicate_cusip_groups"], 12)
+        self.assertEqual(result["duplicate_cusip_groups"], 9)
         self.assertLess(self.data_path.stat().st_size, MAX_PUBLISH_BYTES)
 
     def test_top_tickers_are_compact_sorted_and_use_other_ig(self):
@@ -91,27 +91,11 @@ class SupplyTests(unittest.TestCase):
         for month in range(12):
             self.assertEqual(sum(values[month] for _, values in self.data["monthly"]["peer_groups"]), self.data["monthly"]["total"][month])
 
-    def test_fixture_corrects_five_dates_and_keeps_duplicate_cusips(self):
+    def test_fixture_rejects_stale_dates_instead_of_guessing(self):
         with tempfile.TemporaryDirectory() as directory:
             workbook, peers = make_fixture(Path(directory))
-            data, audit = extract(workbook, peer_workbook=peers)
-        self.assertEqual(data["date"], "2026-09-17")
-        self.assertEqual(data["row_count"], 12)
-        self.assertEqual(data["ytd_usd"], 1_300_000_000)
-        self.assertEqual(data["mtd_usd"], 500_000_000)
-        self.assertEqual(data["quality"], {"date_corrections": 5, "duplicate_cusip_groups": 1})
-        self.assertEqual(len(audit["date_corrections"]), 5)
-        self.assertEqual(dict(data["breakdowns"]["tenor"]), {
-            "FRN": 100_000_000,
-            "3yr & In (1.5–3.5yr)": 300_000_000,
-            "5yr (3.5–6yr)": 200_000_000,
-            "7yr (6–8yr)": 200_000_000,
-            "10yr (8–12yr)": 100_000_000,
-            "20yr (12–22yr)": 200_000_000,
-            "30yr (22–32yr)": 100_000_000,
-            ">32yr (>32yr)": 0,
-            "Perpetual": 100_000_000,
-        })
+            with self.assertRaisesRegex(ValueError, "explicit review"):
+                extract(workbook, peer_workbook=peers)
 
     def test_tenor_bucket_boundaries_keep_frn_and_ticker_perpetual(self):
         cases = (
@@ -134,10 +118,10 @@ class SupplyTests(unittest.TestCase):
     def test_fixture_rejects_ambiguous_or_invalid_workbooks(self):
         cases = (
             ("missing-column", "exactly one worksheet"),
-            ("no-match", "no same-ticker"),
-            ("tie", "tied same-ticker"),
+            ("no-match", "explicit review"),
+            ("tie", "explicit review"),
             ("bad-amount", "invalid Tranche Size"),
-            ("bad-tenor", "invalid Tenor"),
+            ("bad-tenor", "explicit review"),
             ("formula", "may not use formulas"),
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -191,7 +175,7 @@ class SupplyTests(unittest.TestCase):
         self.assertEqual(manifest["content_as_of"], rv["date"])
         self.assertEqual(manifest["datasets"]["supply"], {"content_as_of": self.data["date"], "asset": "assets/supply-data.json"})
         self.assertIn(f'datetime="{self.data["date"]}"', page)
-        self.assertIn("重複 CUSIP 保留並全數計入", page)
+        self.assertIn("後續 Excel 不會覆蓋鎖定期間", page)
 
 
 if __name__ == "__main__":

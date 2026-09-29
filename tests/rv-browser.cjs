@@ -323,7 +323,7 @@ async function runSupply(browser,base,width=1440){
   assert.equal(await page.locator('#ytd-value').innerText(),`$${billion(data.ytd_usd)}`);
   assert.equal(await page.locator('#ytd-value').innerText(),'$1,647');
   assert.equal(await page.locator('#mtd-value').innerText(),`$${billion(data.mtd_usd)}`);
-  assert.equal(await page.locator('#mtd-value').innerText(),'$158');
+  assert.equal(await page.locator('#mtd-value').innerText(),'$164');
   assert.equal(await page.locator('#ytd-top-tickers').isHidden(),true);
   await page.locator('[data-forecast-view=supply]:not([hidden])').waitFor();
   assert.equal(await page.locator('[data-forecast-year]').innerText(),'2026');
@@ -335,7 +335,7 @@ async function runSupply(browser,base,width=1440){
   if(width===375)assert.equal(await page.locator('.forecast-table-wrap').evaluate(node=>node.scrollWidth>node.clientWidth),true);
   await page.locator('#ytd-forecast-comparison:not([hidden])').waitFor();
   assert.equal(await page.locator('#ytd-forecast-comparison').innerText(),'BofA 2026E $2.1Tn · 已達 78%');
-  assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),'BofA 9月E $190Bn · 已達 83%');
+  assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),'BofA 9月E $190Bn · 已達 86%');
 
   const industryName=data.breakdowns.industry[0][0],industryTop=Object.fromEntries(data.top_tickers.ytd.industry)[industryName];
   assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'industry');
@@ -505,7 +505,7 @@ async function runStaleSupply(browser,base,width=1440){
   return {width,staleBanner:true};
 }
 
-module.exports={run,runBonds,runSupply,runStaleSupply,runForecastFallbacks};
+module.exports={run,runBonds,runSupply,runStaleSupply,runForecastFallbacks,supplyFixture,runValidSupplyUpload,runInvalidSupplyUpload};
 
 const FILES = {
   Spread:'2Y Percentile RV.xlsx',
@@ -532,6 +532,7 @@ async function openUploader(browser,base,expectedDate,width=1440,currentLuacDate
     const request=route.request();
     requests.push({url:request.url(),method:request.method(),body:request.postData()});
     if(request.url().endsWith('/session')) return route.fulfill({contentType:'application/json',body:JSON.stringify({token:'test-session',expires_in:900})});
+    if(request.url().endsWith('/validate/supply')) return route.fulfill({contentType:'application/json',body:JSON.stringify({data:supplySnapshot,ignored:12})});
     if(request.url().endsWith('/publish/supply')) return route.fulfill({status:202,contentType:'application/json',body:JSON.stringify({id:'44',state:'pending'})});
     if(request.url().endsWith('/publish/luac')) return route.fulfill({status:202,contentType:'application/json',body:JSON.stringify({id:'43',state:'pending'})});
     if(request.url().endsWith('/publish')) return route.fulfill({status:202,contentType:'application/json',body:JSON.stringify({id:'42',state:'pending'})});
@@ -551,20 +552,22 @@ function supplyFixture(root,variant='valid'){
   const output=join(root,`supply-${variant}`);
   execFileSync('python3',['tests/make_supply_fixture.py','--out',output,'--variant',variant],{stdio:'pipe'});
   const workbook=join(output,'supply.xlsx'),peers=join(output,'peers.xlsx');
-  const snapshot=variant==='valid'?JSON.parse(execFileSync('python3',['scripts/extract_supply.py',workbook,'--peers',peers],{encoding:'utf8',stdio:['ignore','pipe','pipe']})):null;
+  const snapshot=variant==='valid'?JSON.parse(readFileSync('assets/supply-data.json','utf8')):null;
   return {workbook,peers,snapshot};
 }
 
 async function runValidSupplyUpload(browser,base,width,fixture,usePeer=true){
   const {context,page,requests}=await openUploader(browser,base,fixture.snapshot.date,width,'2026-09-15',40,false,fixture.snapshot);
   await page.locator('#supply-file').setInputFiles(fixture.workbook);
-  if(usePeer)await page.locator('#peer-group-file').setInputFiles(fixture.peers);
+  await page.locator('#supply-upload-password').fill('company password');
+  await page.locator('#supply-complete').check();
   await page.locator('#validate-supply').click();
   await page.locator('#supply-validation-status.success').waitFor();
   assert.equal(await page.locator('#supply-summary-date').innerText(),fixture.snapshot.date);
-  assert.equal(await page.locator('#supply-summary-count').innerText(),String(fixture.snapshot.row_count));
+  assert.equal(await page.locator('#supply-summary-count').innerText(),fixture.snapshot.row_count.toLocaleString('en-US'));
   assert.equal(await page.locator('#supply-summary-corrections').innerText(),'5');
-  assert.equal(await page.locator('#supply-summary-duplicates').innerText(),'1');
+  assert.equal(await page.locator('#supply-summary-duplicates').innerText(),String(fixture.snapshot.quality.duplicate_cusip_groups));
+  assert.match(await page.locator('#supply-lock-status').innerText(),/2026-09-25/);
   assert.match(await page.locator('#supply-file-name').innerText(),/已從程式狀態釋放/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/supply uploader overflow`);
   await page.locator('#supply-upload-password').fill('company password');
@@ -574,14 +577,24 @@ async function runValidSupplyUpload(browser,base,width,fixture,usePeer=true){
   assert.ok(publish,'sanitized Supply publish request was sent');
   assert.deepEqual(Object.keys(JSON.parse(publish.body)),['data']);
   assert.equal(/\.xlsx|source_file|sha256|\/Users\//i.test(publish.body),false);
-  assert.deepEqual(JSON.parse(publish.body).data,fixture.snapshot,'browser and Python Supply extraction must match');
+  const payload=JSON.parse(publish.body).data;
+  assert.equal(payload.baseline_version,fixture.snapshot.lock.version);
+  assert.equal(payload.complete,true);assert.equal(payload.records.length,12);
+  assert.equal(payload.records[4].date,'2029-07-27','known bad dates must reach identity matching unchanged, never inferred');
+  for(const row of payload.records)for(const key of ['id','cusip','security'])assert.match(row[key],/^[a-f0-9]{64}$/);
+  assert.equal(publish.body.includes('CUSIP01'),false);
+  assert.equal(publish.body.includes('AAA FLOAT'),false);
+  assert.deepEqual(payload,JSON.parse(requests.find(r=>r.url.endsWith('/validate/supply')).body).data);
+  await page.locator('#supply-as-of').fill('2026-09-26');
+  assert.equal(await page.locator('#publish-supply').isDisabled(),true,'date changes invalidate preview');
   await context.close();
 }
 
 async function runInvalidSupplyUpload(browser,base,fixture,expected,currentSnapshot){
   const {context,page,requests}=await openUploader(browser,base,currentSnapshot.date,1440,'2026-09-15',40,false,currentSnapshot);
   await page.locator('#supply-file').setInputFiles(fixture.workbook);
-  await page.locator('#peer-group-file').setInputFiles(fixture.peers);
+  await page.locator('#supply-upload-password').fill('company password');
+  await page.locator('#supply-complete').check();
   await page.locator('#validate-supply').click();
   await page.locator('#supply-validation-status.error').waitFor();
   assert.match(await page.locator('#supply-validation-status').innerText(),expected);
@@ -744,7 +757,7 @@ if(require.main===module) (async()=>{
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'valid',expectedLuacDate,25),/超過 ±20%/,currentLuacDate);
     const supplyValid=supplyFixture(temporary);
     for(const width of [1440,768,375])await runValidSupplyUpload(browser,base,width,supplyValid,width!==375);
-    for(const [variant,message] of [['missing-column',/必須且只能有一個工作表/],['no-match',/沒有同 ticker/],['tie',/距離相同/],['bad-amount',/Tranche Size 無效/],['bad-tenor',/Tenor 無效/]]){
+    for(const [variant,message] of [['missing-column',/必須且只能有一個工作表/],['formula',/不可使用公式/]]){
       const invalid=supplyFixture(temporary,variant);
       await runInvalidSupplyUpload(browser,base,invalid,message,supplyValid.snapshot);
     }

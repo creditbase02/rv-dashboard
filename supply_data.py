@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import date
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 OTHER_IG = "Other IG"
 TENOR_BUCKETS = (
     "FRN",
@@ -96,9 +97,19 @@ def validate_supply(data: dict, *, allow_legacy: bool = True) -> dict[str, int]:
         "ytd_usd", "mtd_usd", "breakdowns", "monthly", "peer_definitions",
         "peer_tickers", "top_tickers", "quality",
     }
+    if isinstance(data, dict) and "lock" in data:
+        expected.add("lock")
+        lock = data["lock"]
+        if not isinstance(lock, dict) or set(lock) != {"version", "through", "parent", "signature"}:
+            raise ValueError("Unexpected Supply lock fields")
+        if not isinstance(lock["version"], str) or not re.fullmatch(r"[A-Za-z0-9-]{1,80}", lock["version"]):
+            raise ValueError("Invalid Supply lock version")
+        date.fromisoformat(lock["through"])
+        if not isinstance(lock["parent"], str) or not re.fullmatch(r"[a-f0-9]{64}", lock["parent"]) or not isinstance(lock["signature"], str) or not re.fullmatch(r"[A-Za-z0-9+/]{86}==", lock["signature"]):
+            raise ValueError("Invalid Supply lock proof")
     if not isinstance(data, dict) or set(data) != expected:
         raise ValueError("Unexpected Supply snapshot fields")
-    versions = {SCHEMA_VERSION, 2} if allow_legacy else {SCHEMA_VERSION}
+    versions = {SCHEMA_VERSION, 3, 2} if allow_legacy else {SCHEMA_VERSION}
     if data["schema_version"] not in versions or data["currency"] != "USD":
         raise ValueError("Unexpected Supply schema")
     parsed_date = date.fromisoformat(data["date"])

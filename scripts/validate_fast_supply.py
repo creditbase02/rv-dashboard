@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +28,13 @@ def validate_fast_supply(current: dict, previous: dict, current_path: Path, publ
     if current["date"] < previous["date"]:
         raise ValueError(f"Data date {current['date']} must not be earlier than {previous['date']}")
     validate_supply_drift(current, previous)
+    if previous.get("lock") or current.get("lock"):
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory) / "current.json"
+            candidate.write_text(json.dumps(current), encoding="utf-8")
+            prior = Path(directory) / "previous.json"
+            prior.write_text(json.dumps(previous), encoding="utf-8")
+            subprocess.run(["node", str(ROOT / "scripts/verify_supply_lock.mjs"), str(candidate), str(prior)], check=True)
     if current_path.stat().st_size > MAX_PUBLISH_BYTES:
         raise ValueError("Supply snapshot exceeds the 256 KiB publish limit")
     if load_json(public_root / "assets" / "supply-data.json") != current:

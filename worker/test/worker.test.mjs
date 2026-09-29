@@ -65,7 +65,7 @@ function supplySnapshot(date = '2026-09-17', rowCount = 10, ytd = 1000) {
   groupBMonths[0] = [['BBB', second]];
   otherMonths[0] = [['OTHER', others]];
   return {
-    schema_version: 3, date, year: Number(date.slice(0, 4)), currency: 'USD',
+    schema_version: 4, date, year: Number(date.slice(0, 4)), currency: 'USD',
     row_count: rowCount, ytd_usd: ytd, mtd_usd: ytd,
     breakdowns: {
       industry: [['Finance', ytd]],
@@ -417,44 +417,17 @@ test('production LUAC publish allows a same-day correction and writes exactly on
   } finally { globalThis.fetch = savedFetch; }
 });
 
-test('production Supply publish allows same-day correction and writes one compact asset', async () => {
-  const savedFetch = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (url, options = {}) => {
-    const method = options.method || 'GET';
-    calls.push({url: String(url), method, body: options.body});
-    if (String(url).endsWith('/access_tokens')) return apiJson({token: 'installation'});
-    if (String(url).includes('/contents/assets/supply-data.json') && method === 'GET') return apiJson({sha: 'supply-file-sha', content: Buffer.from(JSON.stringify(supplySnapshot())).toString('base64')});
-    if (String(url).endsWith('/git/ref/heads/main')) return apiJson({object: {sha: 'base-sha'}});
-    if (String(url).endsWith('/git/refs') && method === 'POST') return apiJson({ref: 'created'});
-    if (String(url).includes('/contents/assets/supply-data.json') && method === 'PUT') return apiJson({content: {sha: 'new-supply-file'}});
-    if (String(url).endsWith('/pulls') && method === 'POST') return apiJson({number: 82});
-    if (String(url).endsWith('/issues/82/labels') && method === 'POST') return apiJson([{name: 'automated-supply-data'}]);
-    throw new Error(`Unexpected URL ${url}`);
+test('legacy aggregate-only Supply publish cannot bypass the private lock', async () => {
+  const savedFetch=globalThis.fetch;
+  const writes=[];
+  globalThis.fetch=async (url,options={})=>{
+    if(options.method&&options.method!=='GET'&&!String(url).endsWith('/access_tokens'))writes.push(url);
+    if(String(url).endsWith('/access_tokens'))return apiJson({token:'installation'});
+    if(String(url).includes('/contents/assets/supply-data.json'))return apiJson({sha:'old',content:Buffer.from(JSON.stringify(supplySnapshot())).toString('base64')});
+    throw Error('Unexpected call');
   };
-  try {
-    assert.deepEqual(await publishSupplySnapshot(await githubEnv({PUBLISH_MODE: 'production', SUPPLY_UPLOAD_ENABLED: 'true'}), supplySnapshot()), {id: '82', state: 'pending'});
-    const updates = calls.filter(call => call.method === 'PUT');
-    assert.equal(updates.length, 1);
-    assert.match(updates[0].url, /assets\/supply-data\.json$/);
-    const update = JSON.parse(updates[0].body);
-    assert.match(update.branch, /^automation\/supply-data-/);
-    assert.equal(JSON.parse(Buffer.from(update.content, 'base64').toString()).row_count, 10);
-    assert.deepEqual(JSON.parse(calls.find(call => call.url.endsWith('/issues/82/labels')).body), {labels: ['automated-supply-data']});
-  } finally { globalThis.fetch = savedFetch; }
-});
-
-test('Supply publish rejects row or YTD drift above 20 percent', async () => {
-  const savedFetch = globalThis.fetch;
-  globalThis.fetch = async (url) => {
-    if (String(url).endsWith('/access_tokens')) return apiJson({token: 'installation'});
-    if (String(url).includes('/contents/assets/supply-data.json')) return apiJson({sha: 'supply-file-sha', content: Buffer.from(JSON.stringify(supplySnapshot())).toString('base64')});
-    throw new Error(`Unexpected URL ${url}`);
-  };
-  try {
-    await assert.rejects(publishSupplySnapshot(await githubEnv({PUBLISH_MODE: 'production'}), supplySnapshot('2026-09-18', 13, 1000)), /20%/);
-    await assert.rejects(publishSupplySnapshot(await githubEnv({PUBLISH_MODE: 'production'}), supplySnapshot('2026-09-18', 10, 1300)), /20%/);
-  } finally { globalThis.fetch = savedFetch; }
+  try{await assert.rejects(publishSupplySnapshot(await githubEnv({PUBLISH_MODE:'production'}),supplySnapshot()),/鎖定服務/);assert.equal(writes.length,0);}
+  finally{globalThis.fetch=savedFetch;}
 });
 
 test('LUAC publish rejects record-count drift above 20 percent', async () => {

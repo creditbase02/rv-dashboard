@@ -13,6 +13,7 @@
     "GITHUB_REPOSITORY": "creditbase02/rv-dashboard",
     "PUBLIC_MANIFEST_URL": "https://creditbase02.github.io/rv-dashboard/integration-manifest.json"
   },
+  "kv_namespaces": [{"binding":"SUPPLY_PRIVATE","id":"3a81917e4056488c8a78fb83a3bc1387"}],
   "ratelimits": [
     {
       "name": "LOGIN_RATE_LIMITER",
