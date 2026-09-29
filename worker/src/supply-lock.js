@@ -22,7 +22,7 @@ export function reconcile(baseline, upload, previousTail=[]) {
   if (!Array.isArray(upload.records) || upload.records.length>100000) throw Error('Supply 發行記錄無效');
   const byId=new Map(),byCusip=new Map(),bySecurity=new Map();
   for(const r of [...baseline.records,...baseline.aliases])for(const [map,key] of [[byId,r.id],[byCusip,r.cusip],[bySecurity,r.security]]) {if(!map.has(key))map.set(key,[]);map.get(key).push(r);}
-  const tail=[],seen=new Set(),securities=new Set();let ignored=0;
+  const tail=[],seen=new Set(),securities=new Set(),ids=new Set();let ignored=0;
   for(const [index,r] of upload.records.entries()) {
     const label=`Supply 第 ${index+1} 筆`;
     if(!r || Object.keys(r).sort().join()!=='cusip,date,id,industry,rating,security,tenor,ticker,usd' || ![r.id,r.cusip,r.security].every(hash))throw Error(`${label} 識別欄位無效`);
@@ -35,7 +35,7 @@ export function reconcile(baseline, upload, previousTail=[]) {
     const approved=(baseline.approved_events||[]).some(a=>Object.keys(r).every(k=>a[k]===r[k]));
     if(matches.length&&!approved)throw Error(`${label} 可能是鎖定券的改期或增額，須先核對發行事件`);
     if(!Number.isSafeInteger(r.usd)||r.usd<=0||r.usd>1e13||!TENOR_BUCKETS.includes(r.tenor)||!RATING_ORDER.includes(r.rating)||!['ticker','industry'].every(k=>typeof r[k]==='string'&&r[k].trim()&&r[k].length<=160))throw Error(`${label} 金額或分類無效`);
-    const key=eventKey(r);if(seen.has(key))throw Error(`${label} 發行事件重複，須先核對`);if(securities.has(r.cusip)&&!approved)throw Error(`${label} 同券多次發行須先核對增額`);seen.add(key);securities.add(r.cusip);tail.push({...r});
+    const key=eventKey(r);if(seen.has(key))throw Error(`${label} 發行事件重複，須先核對`);if((securities.has(r.cusip)||ids.has(r.id))&&!approved)throw Error(`${label} 同券多次發行須先核對增額`);seen.add(key);securities.add(r.cusip);ids.add(r.id);tail.push({...r});
   }
   if(previousTail.some(r=>!seen.has(eventKey(r))))throw Error('未鎖定期間有已發布交易缺列或改期；請提供完整期間，或走人工核對');
   tail.sort((a,b)=>eventKey(a).localeCompare(eventKey(b)));
