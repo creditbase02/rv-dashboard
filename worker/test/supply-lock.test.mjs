@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {aggregate,reconcile,TENOR_BUCKETS} from '../src/supply-lock.js';
-import {identity,digest,signSnapshot,verifySnapshot,verifyTransition} from '../src/supply-proof.js';
+import {identity,digest,signSnapshot,verifySnapshot,verifyTransition,verifySigningRuntime} from '../src/supply-proof.js';
 import {prepareLockedSupply,validateSupplySnapshot} from '../src/index.js';
 const definitions=[{name:'Banks',tickers:['ABC']}];
 async function record(name,usd=100,date='2026-09-24'){
@@ -87,6 +87,11 @@ test('private record fields never appear in public snapshot',()=>{
   for(const r of [old,fresh])for(const k of ['id','cusip','security'])assert.ok(!serialized.includes(r[k]));
   assert.ok(!serialized.includes('records'));
 });
+test('Node-exported Ed25519 JWK alg metadata is normalized for the signing runtime',async()=>{
+  assert.equal(privateKey.alg,'Ed25519');
+  assert.equal(config.public_key.alg,'Ed25519');
+  await verifySigningRuntime(privateKey,config.public_key);
+});
 test('server retains the 20 percent drift gate after baseline merging',async()=>{
   const oversized={...fresh,usd:5000};
   await assert.rejects(prepareLockedSupply(env(),{...input([oversized]),parent:await digest(initial)},initial,false,config),/20%/);
@@ -95,7 +100,15 @@ test('server retains the 20 percent drift gate after baseline merging',async()=>
 });
 test('two unreviewed rows for the same new CUSIP cannot double count under different IDs',()=>{
   const duplicate={...fresh,id:'f'.repeat(64)};
-  assert.throws(()=>reconcile(baseline,input([fresh,duplicate])),/同券多次發行/);
+  assert.throws(()=>reconcile(baseline,input([fresh,duplicate])),/發行事件重複|同券多次發行/);
+});
+test('a post-cutoff event keeps its identity when official IDs arrive later',async()=>{
+  const pending={...fresh,id:await identity('PENDING BB ID|NEW'),cusip:await identity('PENDING CUSIP|NEW')};
+  const first=reconcile(baseline,input([pending]));
+  const populated={...fresh,id:await identity('official-id'),cusip:await identity('official-cusip')};
+  const second=reconcile(baseline,input([populated]),first.tail);
+  assert.equal(second.data.ytd_usd,first.data.ytd_usd);
+  assert.equal(second.tail.length,1);
 });
 
 test('CI refuses a correctly signed result based on an outdated parent',async()=>{
