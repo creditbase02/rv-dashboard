@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {aggregate,reconcile,TENOR_BUCKETS} from '../src/supply-lock.js';
-import {identity,digest,signSnapshot,verifySnapshot,verifyTransition} from '../src/supply-proof.js';
+import {identity,digest,signSnapshot,verifySnapshot,verifyTransition,verifySigningRuntime} from '../src/supply-proof.js';
 import {prepareLockedSupply,validateSupplySnapshot} from '../src/index.js';
 const definitions=[{name:'Banks',tickers:['ABC']}];
 async function record(name,usd=100,date='2026-09-24'){
@@ -86,6 +86,11 @@ test('private record fields never appear in public snapshot',()=>{
   const serialized=JSON.stringify(reconcile(baseline,input()).data);
   for(const r of [old,fresh])for(const k of ['id','cusip','security'])assert.ok(!serialized.includes(r[k]));
   assert.ok(!serialized.includes('records'));
+});
+test('Node-exported Ed25519 JWK alg metadata is normalized for the signing runtime',async()=>{
+  assert.equal(privateKey.alg,'Ed25519');
+  assert.equal(config.public_key.alg,'Ed25519');
+  await verifySigningRuntime(privateKey,config.public_key);
 });
 test('server retains the 20 percent drift gate after baseline merging',async()=>{
   const oversized={...fresh,usd:5000};

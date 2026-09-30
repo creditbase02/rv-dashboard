@@ -1,6 +1,6 @@
 import lockConfig from '../../assets/supply-lock.json' with {type:'json'};
 import {reconcile} from './supply-lock.js';
-import {digest,signSnapshot,verifySnapshot} from './supply-proof.js';
+import {digest,signSnapshot,verifySnapshot,verifySigningRuntime} from './supply-proof.js';
 const METRICS = ['Spread', '10Y', '30Y', '10s30s'];
 const FIELDS = ['min', 'median', 'max', 'current', 'pct'];
 const LUAC_COLUMNS = ['id','security_des','issuer','ticker','maturity','rating','maturity_years','oas_bp','yield_pct','industry','flags'];
@@ -504,6 +504,7 @@ export async function handleRequest(request, env) {
   const cors = corsHeaders(origin);
   if (request.method === 'OPTIONS') return new Response(null, {status: 204, headers: cors});
   if (url.pathname === '/health' && request.method === 'GET') {
+    if(env.SUPPLY_SIGNING_KEY)await verifySigningRuntime(JSON.parse(env.SUPPLY_SIGNING_KEY),lockConfig.public_key);
     return new Response('RV Upload Service OK', {headers: {'content-type': 'text/plain; charset=utf-8', ...cors}});
   }
   if (url.pathname === '/session' && request.method === 'POST') {
