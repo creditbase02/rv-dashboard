@@ -14,7 +14,9 @@ return data;
 
 const hash = value => typeof value==='string' && /^[a-f0-9]{64}$/.test(value);
 const dateOK = value => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;
-const eventKey = r => `${r.id}:${r.date}`;
+// Security description + pricing date remains stable when Bloomberg/CUSIP
+// identifiers are populated after a same-day deal first appears.
+const eventKey = r => `${r.security}:${r.date}`;
 export function reconcile(baseline, upload, previousTail=[]) {
   if (!baseline || !Array.isArray(baseline.records) || !baseline.records.length || !Array.isArray(baseline.aliases)) throw Error('Supply 私人基準缺失，保留線上版本');
   if (!upload || Object.keys(upload).sort().join()!=='as_of,baseline_version,complete,records' || upload.baseline_version!==baseline.version) throw Error('Supply 基準版本不符，請重新載入');

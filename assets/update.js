@@ -233,12 +233,17 @@
     const maximum=[...table.values.keys()].reduce((value,address)=>Math.max(value,Number(/\d+$/.exec(address)?.[0]||0)),1),formulaAddresses=new Set(nodes(table.doc,'f').map(item=>item.parentElement?.getAttribute('r'))),records=[],requiredColumns=SUPPLY_REQUIRED.map(field=>table.headers[field]);
     for(let row=2;row<=maximum;row++){
       const value=field=>table.values.get(`${column(table.headers[field])}${row}`);
-      if(!present(value('BB ID')))continue;
+      const hasIssueData=['Ticker','Corp Ticker','Pricing Date','Tranche Size'].some(field=>present(value(field)));
+      if(!present(value('BB ID'))&&!hasIssueData)continue;
       if(requiredColumns.some(index=>formulaAddresses.has(`${column(index)}${row}`)))throw Error(`Supply 第 ${row} 列必填欄位不可使用公式`);
       const security=supplyText(value('Ticker'),'Ticker',row,180);
-      const [id,cusip,securityHash]=await Promise.all([supplyText(value('BB ID'),'BB ID',row,64),supplyText(value('CUSIP'),'CUSIP',row,32),security].map(v=>supplyHash(String(v).trim().toUpperCase())));
+      const date=supplyDate(value('Pricing Date'),row),ticker=supplyText(value('Corp Ticker'),'Corp Ticker',row,32).toUpperCase();
+      const rawId=present(value('BB ID'))?supplyText(value('BB ID'),'BB ID',row,64):null;
+      const rawCusip=typeof value('CUSIP')==='string'&&value('CUSIP').trim().length>1?supplyText(value('CUSIP'),'CUSIP',row,32):null;
+      if((!rawId||!rawCusip)&&date<=state.currentSupply.lock.through)throw Error(`Supply 第 ${row} 列在鎖定期間內缺少有效 BB ID 或 CUSIP，須人工核對`);
+      const [id,cusip,securityHash]=await Promise.all([rawId||`PENDING BB ID|${security}`,rawCusip||`PENDING CUSIP|${security}`,security].map(v=>supplyHash(String(v).trim().toUpperCase())));
       let bucket=null;try{bucket=supplyTenor(security,value('Tenor'),row);}catch{}
-      records.push({id,cusip,security:securityHash,ticker:typeof value('Corp Ticker')==='string'?value('Corp Ticker').trim().toUpperCase():value('Corp Ticker'),date:supplyDate(value('Pricing Date'),row),usd:value('Tranche Size'),tenor:bucket,industry:value('Ind Sector'),rating:supplyRating(value('BB Composite'))});
+      records.push({id,cusip,security:securityHash,ticker,date,usd:value('Tranche Size'),tenor:bucket,industry:value('Ind Sector'),rating:supplyRating(value('BB Composite'))});
     }
     return {baseline_version:state.currentSupply.lock.version,parent:await supplyHash(stableJson(state.currentSupply)),as_of:document.querySelector('#supply-as-of').value,complete:true,records};
   }

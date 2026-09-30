@@ -552,7 +552,7 @@ function supplyFixture(root,variant='valid'){
   const output=join(root,`supply-${variant}`);
   execFileSync('python3',['tests/make_supply_fixture.py','--out',output,'--variant',variant],{stdio:'pipe'});
   const workbook=join(output,'supply.xlsx'),peers=join(output,'peers.xlsx');
-  const snapshot=variant==='valid'?JSON.parse(readFileSync('assets/supply-data.json','utf8')):null;
+  const snapshot=['valid','pending-id'].includes(variant)?JSON.parse(readFileSync('assets/supply-data.json','utf8')):null;
   return {workbook,peers,snapshot};
 }
 
@@ -757,6 +757,7 @@ if(require.main===module) (async()=>{
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'valid',expectedLuacDate,25),/超過 ±20%/,currentLuacDate);
     const supplyValid=supplyFixture(temporary);
     for(const width of [1440,768,375])await runValidSupplyUpload(browser,base,width,supplyValid,width!==375);
+    await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'pending-id'),false);
     for(const [variant,message] of [['missing-column',/必須且只能有一個工作表/],['formula',/不可使用公式/]]){
       const invalid=supplyFixture(temporary,variant);
       await runInvalidSupplyUpload(browser,base,invalid,message,supplyValid.snapshot);

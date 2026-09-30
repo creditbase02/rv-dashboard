@@ -100,7 +100,15 @@ test('server retains the 20 percent drift gate after baseline merging',async()=>
 });
 test('two unreviewed rows for the same new CUSIP cannot double count under different IDs',()=>{
   const duplicate={...fresh,id:'f'.repeat(64)};
-  assert.throws(()=>reconcile(baseline,input([fresh,duplicate])),/同券多次發行/);
+  assert.throws(()=>reconcile(baseline,input([fresh,duplicate])),/發行事件重複|同券多次發行/);
+});
+test('a post-cutoff event keeps its identity when official IDs arrive later',async()=>{
+  const pending={...fresh,id:await identity('PENDING BB ID|NEW'),cusip:await identity('PENDING CUSIP|NEW')};
+  const first=reconcile(baseline,input([pending]));
+  const populated={...fresh,id:await identity('official-id'),cusip:await identity('official-cusip')};
+  const second=reconcile(baseline,input([populated]),first.tail);
+  assert.equal(second.data.ytd_usd,first.data.ytd_usd);
+  assert.equal(second.tail.length,1);
 });
 
 test('CI refuses a correctly signed result based on an outdated parent',async()=>{
