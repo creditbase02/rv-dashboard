@@ -59,7 +59,7 @@ python scripts/probe_bloomberg_luac.py --known-security "<approved Bloomberg ID>
 
 ### IG Supply 資料
 
-Supply 使用「私人鎖定基準＋未鎖定期間整段替換」。初始版本 `reviewed-20260925-v1` 鎖定至 2026/09/25，YTD 1,646,875,719,000 USD，9月 163,800,000,000 USD；1,651個發行事件包含JBS原發行與增額拆分，不能以來源列數推斷交易數。Athene等原稽核證據限制保留於私人報告，未為符合外部四捨五入數字改變統計範圍。
+Supply 使用「私人鎖定基準＋未鎖定期間整段替換」。目前版本 `reviewed-20260930-v1` 鎖定至 2026/09/30，YTD 1,678,375,719,000 USD，9月 195,300,000,000 USD，共1,661個發行事件。初始版本 `reviewed-20260925-v1` 鎖定至 2026/09/25，包含1,651個發行事件、YTD 1,646,875,719,000 USD及9月163,800,000,000 USD。兩版均包含JBS原發行與增額拆分，不能以來源列數推斷交易數。Athene等原稽核證據限制保留於私人報告，未為符合外部四捨五入數字改變統計範圍。
 
 來源必要欄位仍為 `BB ID`、`CUSIP`、`Ticker`、`Corp Ticker`、`Pricing Date`、`Tranche Size`、`Tenor`、`Ind Sector`、`BB Composite`。不再依相鄰列推定日期。所有已鎖定識別碼及原始錯誤別名先匹配；截止日前資料不能替換基準。疑似舊券改期或同CUSIP增額必須先核對；有證據的新增額以私人基準中的精確 `approved_events` 核准，不能只核准一個CUSIP。重複發行事件整批拒絕。
 

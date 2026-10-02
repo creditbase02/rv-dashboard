@@ -1,1 +1,1 @@
-{"version":"reviewed-20260925-v1","through":"2026-09-25","public_key":{"key_ops":["verify"],"ext":true,"alg":"Ed25519","crv":"Ed25519","x":"GvdwW9RoZSCEbvzgtMoafg1q9pXQc-VC2eIKLXhQ50o","kty":"OKP"}}
+{"version":"reviewed-20260930-v1","through":"2026-09-30","public_key":{"key_ops":["verify"],"ext":true,"alg":"Ed25519","crv":"Ed25519","x":"GvdwW9RoZSCEbvzgtMoafg1q9pXQc-VC2eIKLXhQ50o","kty":"OKP"}}

@@ -45,14 +45,18 @@ class SupplyTests(unittest.TestCase):
         for field in ("CUSIP", "BB ID", "ISIN", "Tranche Size", "Pricing Date", "source_file", "workbook", ".xlsx"):
             self.assertNotIn(field, text)
 
-    def test_initial_snapshot_matches_approved_acceptance_values(self):
+    def test_locked_snapshot_matches_approved_acceptance_values(self):
         result = validate_supply(self.data)
         self.assertIn(self.data["schema_version"], (2, 3, 4))
-        self.assertEqual(self.data["date"], "2026-09-25")
+        self.assertEqual(self.data["date"], "2026-09-30")
         self.assertEqual(self.data["year"], 2026)
-        self.assertEqual(self.data["row_count"], 1651)
-        self.assertEqual(self.data["ytd_usd"], 1_646_875_719_000)
-        self.assertEqual(self.data["mtd_usd"], 163_800_000_000)
+        self.assertEqual(self.data["row_count"], 1661)
+        self.assertEqual(self.data["ytd_usd"], 1_678_375_719_000)
+        self.assertEqual(self.data["mtd_usd"], 195_300_000_000)
+        self.assertEqual(dict(self.data["breakdowns"]["industry"])["Consumer, Non-cyclical"], 168_400_000_000)
+        self.assertNotIn("Food-Retail", dict(self.data["breakdowns"]["industry"]))
+        self.assertEqual(dict(self.data["breakdowns"]["rating"])["BBB"], 235_470_000_000)
+        self.assertEqual(dict(self.data["breakdowns"]["rating"])["NR"], 17_450_000_000)
         self.assertEqual(result["date_corrections"], 5)
         self.assertEqual(result["duplicate_cusip_groups"], 9)
         self.assertLess(self.data_path.stat().st_size, MAX_PUBLISH_BYTES)

@@ -104,7 +104,7 @@ def make_fixture(output: Path, variant: str = "valid") -> tuple[Path, Path]:
     elif variant == "pending-id":
         records[0][0] = None
         records[0][1] = 1
-        records[0][4] = "09/28/26"
+        records[0][4] = "10/01/26"
     supply = write_workbook(output / "supply.xlsx", "Supply", headers, records, formulas)
     peers = write_workbook(
         output / "peers.xlsx",
