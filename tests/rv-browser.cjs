@@ -321,9 +321,9 @@ async function runSupply(browser,base,width=1440){
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const topRows=panel=>page.locator(`${panel} tbody tr`).evaluateAll(rows=>rows.map(row=>[...row.children].map(cell=>cell.innerText)));
   assert.equal(await page.locator('#ytd-value').innerText(),`$${billion(data.ytd_usd)}`);
-  assert.equal(await page.locator('#ytd-value').innerText(),'$1,647');
+  assert.equal(await page.locator('#ytd-value').innerText(),'$1,678');
   assert.equal(await page.locator('#mtd-value').innerText(),`$${billion(data.mtd_usd)}`);
-  assert.equal(await page.locator('#mtd-value').innerText(),'$164');
+  assert.equal(await page.locator('#mtd-value').innerText(),'$195');
   assert.equal(await page.locator('#ytd-top-tickers').isHidden(),true);
   await page.locator('[data-forecast-view=supply]:not([hidden])').waitFor();
   assert.equal(await page.locator('[data-forecast-year]').innerText(),'2026');
@@ -334,8 +334,8 @@ async function runSupply(browser,base,width=1440){
   assert.match(await page.locator('.forecast-table').innerText(),/\$330Bn/);
   if(width===375)assert.equal(await page.locator('.forecast-table-wrap').evaluate(node=>node.scrollWidth>node.clientWidth),true);
   await page.locator('#ytd-forecast-comparison:not([hidden])').waitFor();
-  assert.equal(await page.locator('#ytd-forecast-comparison').innerText(),'BofA 2026E $2.1Tn · 已達 78%');
-  assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),'BofA 9月E $190Bn · 已達 86%');
+  assert.equal(await page.locator('#ytd-forecast-comparison').innerText(),'BofA 2026E $2.1Tn · 已達 80%');
+  assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),'BofA 9月E $190Bn · 已達 103%');
 
   const industryName=data.breakdowns.industry[0][0],industryTop=Object.fromEntries(data.top_tickers.ytd.industry)[industryName];
   assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'industry');
@@ -556,9 +556,10 @@ function supplyFixture(root,variant='valid'){
   return {workbook,peers,snapshot};
 }
 
-async function runValidSupplyUpload(browser,base,width,fixture,usePeer=true){
+async function runValidSupplyUpload(browser,base,width,fixture,usePeer=true,asOf=fixture.snapshot.date){
   const {context,page,requests}=await openUploader(browser,base,fixture.snapshot.date,width,'2026-09-15',40,false,fixture.snapshot);
   await page.locator('#supply-file').setInputFiles(fixture.workbook);
+  await page.locator('#supply-as-of').fill(asOf);
   await page.locator('#supply-upload-password').fill('company password');
   await page.locator('#supply-complete').check();
   await page.locator('#validate-supply').click();
@@ -567,7 +568,7 @@ async function runValidSupplyUpload(browser,base,width,fixture,usePeer=true){
   assert.equal(await page.locator('#supply-summary-count').innerText(),fixture.snapshot.row_count.toLocaleString('en-US'));
   assert.equal(await page.locator('#supply-summary-corrections').innerText(),'5');
   assert.equal(await page.locator('#supply-summary-duplicates').innerText(),String(fixture.snapshot.quality.duplicate_cusip_groups));
-  assert.match(await page.locator('#supply-lock-status').innerText(),/2026-09-25/);
+  assert.match(await page.locator('#supply-lock-status').innerText(),/2026-09-30/);
   assert.match(await page.locator('#supply-file-name').innerText(),/已從程式狀態釋放/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/supply uploader overflow`);
   await page.locator('#supply-upload-password').fill('company password');
@@ -757,7 +758,7 @@ if(require.main===module) (async()=>{
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'valid',expectedLuacDate,25),/超過 ±20%/,currentLuacDate);
     const supplyValid=supplyFixture(temporary);
     for(const width of [1440,768,375])await runValidSupplyUpload(browser,base,width,supplyValid,width!==375);
-    await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'pending-id'),false);
+    await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'pending-id'),false,'2026-10-01');
     for(const [variant,message] of [['missing-column',/必須且只能有一個工作表/],['formula',/不可使用公式/]]){
       const invalid=supplyFixture(temporary,variant);
       await runInvalidSupplyUpload(browser,base,invalid,message,supplyValid.snapshot);
