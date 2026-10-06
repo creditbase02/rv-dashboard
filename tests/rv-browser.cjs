@@ -552,7 +552,7 @@ function supplyFixture(root,variant='valid'){
   const output=join(root,`supply-${variant}`);
   execFileSync('python3',['tests/make_supply_fixture.py','--out',output,'--variant',variant],{stdio:'pipe'});
   const workbook=join(output,'supply.xlsx'),peers=join(output,'peers.xlsx');
-  const snapshot=['valid','pending-id'].includes(variant)?JSON.parse(readFileSync('assets/supply-data.json','utf8')):null;
+  const snapshot=['valid','pending-id','cusip-only-locked'].includes(variant)?JSON.parse(readFileSync('assets/supply-data.json','utf8')):null;
   return {workbook,peers,snapshot};
 }
 
@@ -759,7 +759,8 @@ if(require.main===module) (async()=>{
     const supplyValid=supplyFixture(temporary);
     for(const width of [1440,768,375])await runValidSupplyUpload(browser,base,width,supplyValid,width!==375);
     await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'pending-id'),false,'2026-10-01');
-    for(const [variant,message] of [['missing-column',/必須且只能有一個工作表/],['formula',/不可使用公式/]]){
+    await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'cusip-only-locked'),false,'2026-09-30');
+    for(const [variant,message] of [['missing-column',/必須且只能有一個工作表/],['formula',/不可使用公式/],['missing-locked-identifiers',/同時缺少有效 BB ID 與 CUSIP/]]){
       const invalid=supplyFixture(temporary,variant);
       await runInvalidSupplyUpload(browser,base,invalid,message,supplyValid.snapshot);
     }

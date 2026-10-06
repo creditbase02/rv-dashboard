@@ -70,7 +70,7 @@ Supply 使用「私人鎖定基準＋未鎖定期間整段替換」。目前版�
 
 上述版本與數字是歷史紀錄，不得在新的診斷中視為即時狀態。每次 Supply 更新或失敗排查仍須依「判斷目前正式狀態」重新讀取 `origin/main` 與正式站的 `assets/supply-data.json`；檢核規則必須套用該快照的 `lock.through`，不能套用本機舊快照的鎖定日。
 
-來源必要欄位仍為 `BB ID`、`CUSIP`、`Ticker`、`Corp Ticker`、`Pricing Date`、`Tranche Size`、`Tenor`、`Ind Sector`、`BB Composite`。不再依相鄰列推定日期。所有已鎖定識別碼及原始錯誤別名先匹配；截止日前資料不能替換基準。疑似舊券改期或同CUSIP增額必須先核對；有證據的新增額以私人基準中的精確 `approved_events` 核准，不能只核准一個CUSIP。重複發行事件整批拒絕。
+來源欄位仍須包含 `BB ID`、`CUSIP`、`Ticker`、`Corp Ticker`、`Pricing Date`、`Tranche Size`、`Tenor`、`Ind Sector`、`BB Composite`。逐列識別時，有有效 CUSIP 即可，不強制 BB ID；已鎖定期間只有 BB ID 與 CUSIP 同時缺失才停止並要求人工核對。不再依相鄰列推定日期。所有已鎖定識別碼及原始錯誤別名先匹配；截止日前資料不能替換基準。疑似舊券改期或同CUSIP增額必須先核對；有證據的新增額以私人基準中的精確 `approved_events` 核准，不能只核准一個CUSIP。重複發行事件整批拒絕。
 
 Supply 是一般上傳契約的明確例外：原始Excel與檔名、路徑不離開瀏覽器；登入後將識別碼SHA-256及定價日、金額、產業、評級、期限bucket、公司ticker送往私人服務。雜湊不是匿名化，這些最小核對資料不得寫入公開資產、PR或日誌。RV與LUAC原有上傳契約不變。私人台帳及基準位於repo外；Worker的`SUPPLY_PRIVATE` KV保存不公開的基準與未鎖定事件，沒有瀏覽器寫入基準的API。`SUPPLY_SIGNING_KEY`是Ed25519私人JWK secret，僅公鑰存於`assets/supply-lock.json`。
 

@@ -240,7 +240,7 @@
       const date=supplyDate(value('Pricing Date'),row),ticker=supplyText(value('Corp Ticker'),'Corp Ticker',row,32).toUpperCase();
       const rawId=present(value('BB ID'))?supplyText(value('BB ID'),'BB ID',row,64):null;
       const rawCusip=typeof value('CUSIP')==='string'&&value('CUSIP').trim().length>1?supplyText(value('CUSIP'),'CUSIP',row,32):null;
-      if((!rawId||!rawCusip)&&date<=state.currentSupply.lock.through)throw Error(`Supply 第 ${row} 列在鎖定期間內缺少有效 BB ID 或 CUSIP，須人工核對`);
+      if(!rawId&&!rawCusip&&date<=state.currentSupply.lock.through)throw Error(`Supply 第 ${row} 列在鎖定期間內同時缺少有效 BB ID 與 CUSIP，須人工核對`);
       const [id,cusip,securityHash]=await Promise.all([rawId||`PENDING BB ID|${security}`,rawCusip||`PENDING CUSIP|${security}`,security].map(v=>supplyHash(String(v).trim().toUpperCase())));
       let bucket=null;try{bucket=supplyTenor(security,value('Tenor'),row);}catch{}
       records.push({id,cusip,security:securityHash,ticker,date,usd:value('Tranche Size'),tenor:bucket,industry:value('Ind Sector'),rating:supplyRating(value('BB Composite'))});
