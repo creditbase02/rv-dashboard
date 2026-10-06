@@ -14,6 +14,13 @@
 3. 執行 `python3 peer_status.py`，記錄知識庫最後穩定版本；peer 暫時離線是警告，不代表可修改對方 repo。
 4. 確認 `git status` 沒有不屬於本任務的變更。
 
+### 判斷目前正式狀態
+
+- 使用者問「目前」、「已鎖定至何日」、「為什麼當期檔案檢核失敗」或要求更新資料時，`git fetch origin` 是診斷前置條件，不只是建立 branch 的步驟。先確認本機是否落後；不得用落後 checkout 內的 `assets/*.json`、先前對話記憶或本文件的敘述日期判斷目前狀態。
+- 至少交叉核對 `origin/main` 的資料資產與正式站同一資產。正式站請加一次性 query string 避開 GitHub Pages 快取，例如 `assets/supply-data.json?check=<timestamp>`；Supply 至少比較 `date`、`row_count`、`ytd_usd`、`lock.version` 與 `lock.through`。
+- `origin/main` 與正式站一致時，才以該版本診斷上傳檔。兩者不一致時，先視為尚未部署或快取／發布異常，查 manifest、Pages 狀態與 cache-buster 回應，不得自行選較舊版本作結論。
+- 文件中的「目前版本」只是在該 commit 完成時的紀錄，不是即時資料來源。即使段落列出明確版本與日期，新的對話仍須執行上述核對。
+
 ## 更新資料
 
 ### 網頁自動更新（Excel 嚴格模式）
@@ -61,7 +68,9 @@ python scripts/probe_bloomberg_luac.py --known-security "<approved Bloomberg ID>
 
 Supply 使用「私人鎖定基準＋未鎖定期間整段替換」。目前版本 `reviewed-20260930-v1` 鎖定至 2026/09/30，YTD 1,678,375,719,000 USD，9月 195,300,000,000 USD，共1,661個發行事件。初始版本 `reviewed-20260925-v1` 鎖定至 2026/09/25，包含1,651個發行事件、YTD 1,646,875,719,000 USD及9月163,800,000,000 USD。兩版均包含JBS原發行與增額拆分，不能以來源列數推斷交易數。Athene等原稽核證據限制保留於私人報告，未為符合外部四捨五入數字改變統計範圍。
 
-來源必要欄位仍為 `BB ID`、`CUSIP`、`Ticker`、`Corp Ticker`、`Pricing Date`、`Tranche Size`、`Tenor`、`Ind Sector`、`BB Composite`。不再依相鄰列推定日期。所有已鎖定識別碼及原始錯誤別名先匹配；截止日前資料不能替換基準。疑似舊券改期或同CUSIP增額必須先核對；有證據的新增額以私人基準中的精確 `approved_events` 核准，不能只核准一個CUSIP。重複發行事件整批拒絕。
+上述版本與數字是歷史紀錄，不得在新的診斷中視為即時狀態。每次 Supply 更新或失敗排查仍須依「判斷目前正式狀態」重新讀取 `origin/main` 與正式站的 `assets/supply-data.json`；檢核規則必須套用該快照的 `lock.through`，不能套用本機舊快照的鎖定日。
+
+來源欄位仍須包含 `BB ID`、`CUSIP`、`Ticker`、`Corp Ticker`、`Pricing Date`、`Tranche Size`、`Tenor`、`Ind Sector`、`BB Composite`。逐列識別時，有有效 CUSIP 即可，不強制 BB ID；已鎖定期間只有 BB ID 與 CUSIP 同時缺失才停止並要求人工核對。不再依相鄰列推定日期。所有已鎖定識別碼及原始錯誤別名先匹配；截止日前資料不能替換基準。疑似舊券改期或同CUSIP增額必須先核對；有證據的新增額以私人基準中的精確 `approved_events` 核准，不能只核准一個CUSIP。重複發行事件整批拒絕。
 
 Supply 是一般上傳契約的明確例外：原始Excel與檔名、路徑不離開瀏覽器；登入後將識別碼SHA-256及定價日、金額、產業、評級、期限bucket、公司ticker送往私人服務。雜湊不是匿名化，這些最小核對資料不得寫入公開資產、PR或日誌。RV與LUAC原有上傳契約不變。私人台帳及基準位於repo外；Worker的`SUPPLY_PRIVATE` KV保存不公開的基準與未鎖定事件，沒有瀏覽器寫入基準的API。`SUPPLY_SIGNING_KEY`是Ed25519私人JWK secret，僅公鑰存於`assets/supply-lock.json`。
 
