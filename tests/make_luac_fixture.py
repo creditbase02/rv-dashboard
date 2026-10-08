@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from scripts.extract_luac import HEADERS
+from scripts.extract_luac import COMBINED_HEADERS, HEADERS
 
 
 def serial(value: str) -> int:
@@ -73,6 +73,27 @@ def write_package(path: Path, sheet_name: str, rows: list[str]) -> Path:
 
 
 def make_fixture(path: Path, variant: str = "valid", data_date: str = "2026-09-16", count: int = 40) -> Path:
+    if variant.startswith("combined"):
+        rows = ["<row r=\"1\">" + "".join(cell(index, 1, value) for index, value in enumerate(COMBINED_HEADERS, 1)) + "</row>"]
+        for index in range(count):
+            row = index + 2
+            identifier = "US0000000000" if variant == "combined-duplicate" and index == count - 1 else f"US000000{index:04d}"
+            oas: object = "" if variant == "combined-missing" and index == count - 1 else 120 + (index % 400)
+            values = {
+                1: identifier,
+                2: f"TEST {index} 5.0 09/15/30",
+                3: f"Test Issuer {index % 5}",
+                4: f"T{index % 4}",
+                5: serial("2030-09-15"),
+                6: ("A-", "BBB+", "AA", "BB+")[index % 4],
+                7: 4 + (index % 4500) / 100,
+                8: oas,
+                9: 5 + (index % 400) / 100,
+                10: "Technology",
+            }
+            rows.append(f'<row r="{row}">' + "".join(cell(column, row, value) for column, value in values.items() if value != "") + "</row>")
+        return write_package(path, "LUAC", rows)
+
     headers = list(HEADERS)
     if variant == "level3":
         headers[-1] = "CLASSIFICATION_NAME(BICS,3,TYPE=ISSUER)"

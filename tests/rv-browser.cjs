@@ -321,21 +321,21 @@ async function runSupply(browser,base,width=1440){
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const topRows=panel=>page.locator(`${panel} tbody tr`).evaluateAll(rows=>rows.map(row=>[...row.children].map(cell=>cell.innerText)));
   assert.equal(await page.locator('#ytd-value').innerText(),`$${billion(data.ytd_usd)}`);
-  assert.equal(await page.locator('#ytd-value').innerText(),'$1,678');
   assert.equal(await page.locator('#mtd-value').innerText(),`$${billion(data.mtd_usd)}`);
-  assert.equal(await page.locator('#mtd-value').innerText(),'$195');
   assert.equal(await page.locator('#ytd-top-tickers').isHidden(),true);
   await page.locator('[data-forecast-view=supply]:not([hidden])').waitFor();
   assert.equal(await page.locator('[data-forecast-year]').innerText(),'2026');
   assert.deepEqual(await page.locator('.forecast-table thead th').allTextContents(),['預期項目','BofA','GS']);
-  assert.deepEqual(await page.locator('.forecast-table tbody th').allTextContents(),['2026 Gross Supply','9 月 Gross Supply','2026 Hyperscaler Issuance']);
+  const supplyMonth=Number(data.date.slice(5,7));
+  assert.deepEqual(await page.locator('.forecast-table tbody th').allTextContents(),['2026 Gross Supply',`${supplyMonth} 月 Gross Supply`,'2026 Hyperscaler Issuance']);
   assert.match(await page.locator('.forecast-table').innerText(),/\$2\.1Tn/);
-  assert.match(await page.locator('.forecast-table').innerText(),/\$190Bn/);
+  if(supplyMonth===9)assert.match(await page.locator('.forecast-table').innerText(),/\$190Bn/);
   assert.match(await page.locator('.forecast-table').innerText(),/\$330Bn/);
   if(width===375)assert.equal(await page.locator('.forecast-table-wrap').evaluate(node=>node.scrollWidth>node.clientWidth),true);
   await page.locator('#ytd-forecast-comparison:not([hidden])').waitFor();
   assert.equal(await page.locator('#ytd-forecast-comparison').innerText(),'BofA 2026E $2.1Tn · 已達 80%');
-  assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),'BofA 9月E $190Bn · 已達 103%');
+  if(supplyMonth===9)assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),'BofA 9月E $190Bn · 已達 103%');
+  else assert.equal(await page.locator('#mtd-forecast-comparison').isHidden(),true);
 
   const industryName=data.breakdowns.industry[0][0],industryTop=Object.fromEntries(data.top_tickers.ytd.industry)[industryName];
   assert.equal(await page.locator('#ytd-chart').getAttribute('data-mode'),'industry');
@@ -642,15 +642,16 @@ function luacFixture(root,variant,date,count=40){
   return {workbook:`${base}.xlsx`,peers:`${base}-peers.xlsx`};
 }
 
-async function runValidLuacUpload(browser,base,width,fixture,expectedDate,currentDate,bql=false){
+async function runValidLuacUpload(browser,base,width,fixture,expectedDate,currentDate,bql=false,combined=false){
   const {context,page,requests}=await openUploader(browser,base,expectedDate,width,currentDate);
   await page.locator('#luac-file').setInputFiles(fixture.workbook);
   await page.locator('#peer-group-file').setInputFiles(fixture.peers);
+  if(combined)await page.locator('#luac-data-date').fill(expectedDate);
   await page.locator('#validate-luac').click();
   await page.locator('#luac-validation-status.success').waitFor();
   assert.equal(await page.locator('#luac-summary-date').innerText(),expectedDate);
   assert.equal(await page.locator('#luac-summary-count').innerText(),'40');
-  assert.equal(await page.locator('#luac-summary-source').innerText(),bql?'BQL 已儲存快取':'純值 Excel');
+  assert.equal(await page.locator('#luac-summary-source').innerText(),`${bql?'BQL 已儲存快取':'純值 Excel'}（${combined?'10 欄合併':'11 欄雙區塊'}）`);
   if(bql){assert.equal(await page.locator('#publish-luac').isDisabled(),true);await page.locator('#bql-confirm').check();}
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/luac uploader overflow`);
   await page.locator('#luac-upload-password').fill('company password');
@@ -662,7 +663,8 @@ async function runValidLuacUpload(browser,base,width,fixture,expectedDate,curren
   assert.equal(/\.xlsx|source_file|sha256|\/Users\//i.test(publish.body),false);
   assert.equal(JSON.parse(publish.body).data.date,expectedDate);
   assert.deepEqual(JSON.parse(publish.body).data.peer_definitions,[{name:'Fixture Banks',tickers:['T0','T1']},{name:'Fixture Tech',tickers:['T2','T3']}]);
-  const python=JSON.parse(execFileSync('python3',['scripts/extract_luac.py',fixture.workbook,'--peers',fixture.peers],{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
+  const pythonArgs=['scripts/extract_luac.py',fixture.workbook,'--peers',fixture.peers];if(combined)pythonArgs.push('--date',expectedDate);
+  const python=JSON.parse(execFileSync('python3',pythonArgs,{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
   assert.deepEqual(JSON.parse(publish.body).data,python,'browser and Python LUAC extraction must match');
   await context.close();
 }
@@ -716,6 +718,17 @@ async function runInvalidLuacUpload(browser,base,fixture,expected,currentDate,cu
   await context.close();
 }
 
+async function runCombinedLuacWithoutDate(browser,base,fixture,currentDate){
+  const {context,page,requests}=await openUploader(browser,base,currentDate,1440,currentDate);
+  await page.locator('#luac-file').setInputFiles(fixture.workbook);
+  await page.locator('#peer-group-file').setInputFiles(fixture.peers);
+  await page.locator('#validate-luac').click();
+  await page.locator('#luac-validation-status.error').waitFor();
+  assert.match(await page.locator('#luac-validation-status').innerText(),/10 欄合併格式必須填寫有效的行情資料日期/);
+  assert.equal(requests.some(item=>item.url.endsWith('/publish/luac')),false);
+  await context.close();
+}
+
 if(require.main===module) (async()=>{
   const {chromium}=require('playwright');
   const channel=process.env.RV_BROWSER_CHANNEL;
@@ -745,10 +758,13 @@ if(require.main===module) (async()=>{
     const nextLuacDate=new Date(`${currentLuacDate}T00:00:00Z`);nextLuacDate.setUTCDate(nextLuacDate.getUTCDate()+1);
     const expectedLuacDate=nextLuacDate.toISOString().slice(0,10),luacValid=luacFixture(temporary,'valid',expectedLuacDate);
     for(const width of [1440,768,375])await runValidLuacUpload(browser,base,width,luacValid,expectedLuacDate,currentLuacDate);
+    const combinedLuac=luacFixture(temporary,'combined',expectedLuacDate);
+    await runValidLuacUpload(browser,base,1440,combinedLuac,expectedLuacDate,currentLuacDate,false,true);
+    await runCombinedLuacWithoutDate(browser,base,combinedLuac,currentLuacDate);
     await runValidLuacUpload(browser,base,1440,luacFixture(temporary,'bql',expectedLuacDate),expectedLuacDate,currentLuacDate,true);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'formula',expectedLuacDate),/只允許一個 BQL 公式/,currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'bql-no-cache',expectedLuacDate),/沒有已儲存的快取值/,currentLuacDate);
-    await runInvalidLuacUpload(browser,base,luacFixture(temporary,'level3',expectedLuacDate),/欄位不符合必要格式/,currentLuacDate);
+    await runInvalidLuacUpload(browser,base,luacFixture(temporary,'level3',expectedLuacDate),/欄位不符合必要的 10 欄合併格式或 11 欄雙區塊格式/,currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'nonfinite',expectedLuacDate),/OAS.*無效/,currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'mismatch',expectedLuacDate),/ID 必須完整一致/,currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'mixed-date',expectedLuacDate),/資料日期不一致/,currentLuacDate);

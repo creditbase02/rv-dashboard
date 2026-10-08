@@ -34,7 +34,9 @@ HEADERS = (
     "YIELD(YT=CONVENTION,PRICING_SOURCE=BVAL,SIDE=BID)",
     "CLASSIFICATION_NAME(BICS,1,TYPE=ISSUER)",
 )
+COMBINED_HEADERS = HEADERS[:7] + HEADERS[8:]
 CELL = re.compile(r"^([A-Z]+)(\d+)$")
+ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def column_number(address: str) -> int:
@@ -132,7 +134,24 @@ def require_number(value: object, field: str, row: int) -> float:
     return value
 
 
-def extract(path: Path, peer_workbook: Path | None = None, peer_definitions: list[dict[str, object]] | None = None) -> dict:
+def require_data_date(value: str | None) -> str:
+    if not value or not ISO_DATE.fullmatch(value):
+        raise ValueError("LUAC combined workbook requires --date in YYYY-MM-DD format")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError("LUAC combined workbook requires a valid --date") from error
+    if parsed.isoformat() != value:
+        raise ValueError("LUAC combined workbook requires --date in YYYY-MM-DD format")
+    return value
+
+
+def extract(
+    path: Path,
+    peer_workbook: Path | None = None,
+    peer_definitions: list[dict[str, object]] | None = None,
+    data_date: str | None = None,
+) -> dict:
     if (peer_workbook is None) == (peer_definitions is None):
         raise ValueError("Provide exactly one peer mapping source")
     definitions = parse_peer_definitions(peer_workbook) if peer_workbook else peer_definitions
@@ -142,69 +161,112 @@ def extract(path: Path, peer_workbook: Path | None = None, peer_definitions: lis
         values, maximum_row, source_mode = cells(archive, sheet_path, shared_strings(archive))
 
     actual_headers = tuple(values.get((1, column)) for column in range(1, 12))
-    if actual_headers != HEADERS:
-        raise ValueError("LUAC workbook headers do not match the required schema")
+    if actual_headers == HEADERS:
+        layout_mode = "two_block"
+    elif actual_headers[:10] == COMBINED_HEADERS and actual_headers[10] in (None, ""):
+        layout_mode = "combined"
+    else:
+        raise ValueError("LUAC workbook headers do not match the required 10-column or 11-column schema")
 
-    static: dict[str, tuple[object, ...]] = {}
-    market: dict[str, tuple[object, ...]] = {}
-    order: list[str] = []
-    for row in range(2, maximum_row + 1):
-        record = tuple(values.get((row, column)) for column in range(1, 12))
-        if all(value in (None, "") for value in record):
-            continue
-        identifier = require_text(record[0], "ID", row)
-        has_static = any(record[index] not in (None, "") for index in (1, 2, 3, 4, 5, 6, 10))
-        has_market = any(record[index] not in (None, "") for index in (7, 8, 9))
-        if has_static == has_market:
-            raise ValueError(f"LUAC row {row} must belong to exactly one data block")
-        target = static if has_static else market
-        if identifier in target:
-            raise ValueError(f"Duplicate LUAC ID: {identifier}")
-        if has_static:
-            for index, field in zip((1, 2, 3, 5, 10), ("SECURITY_DES", "issuer", "ticker", "rating", "industry")):
-                require_text(record[index], field, row)
-            require_number(record[4], "maturity", row)
-            require_number(record[6], "maturity_years", row)
-            order.append(identifier)
-        else:
-            for index, field in zip((7, 8, 9), ("date", "oas_bp", "yield_pct")):
-                require_number(record[index], field, row)
-        target[identifier] = record
+    if layout_mode == "combined":
+        resolved_date = require_data_date(data_date)
+        records: list[list[object]] = []
+        identifiers: set[str] = set()
+        for row in range(2, maximum_row + 1):
+            record = tuple(values.get((row, column)) for column in range(1, 11))
+            if all(value in (None, "") for value in record):
+                continue
+            identifier = require_text(record[0], "ID", row)
+            if identifier in identifiers:
+                raise ValueError(f"Duplicate LUAC ID: {identifier}")
+            identifiers.add(identifier)
+            security = require_text(record[1], "SECURITY_DES", row)
+            issuer = require_text(record[2], "issuer", row)
+            ticker = require_text(record[3], "ticker", row)
+            maturity = require_number(record[4], "maturity", row)
+            rating = require_text(record[5], "rating", row)
+            years = require_number(record[6], "maturity_years", row)
+            oas = require_number(record[7], "oas_bp", row)
+            bond_yield = require_number(record[8], "yield_pct", row)
+            industry = require_text(record[9], "industry", row)
+            records.append([
+                identifier,
+                security,
+                issuer,
+                ticker,
+                excel_date(maturity, date_1904),
+                rating,
+                years,
+                oas,
+                bond_yield,
+                industry,
+                quality_flags(years, oas, bond_yield),
+            ])
+    else:
+        static: dict[str, tuple[object, ...]] = {}
+        market: dict[str, tuple[object, ...]] = {}
+        order: list[str] = []
+        for row in range(2, maximum_row + 1):
+            record = tuple(values.get((row, column)) for column in range(1, 12))
+            if all(value in (None, "") for value in record):
+                continue
+            identifier = require_text(record[0], "ID", row)
+            has_static = any(record[index] not in (None, "") for index in (1, 2, 3, 4, 5, 6, 10))
+            has_market = any(record[index] not in (None, "") for index in (7, 8, 9))
+            if has_static == has_market:
+                raise ValueError(f"LUAC row {row} must belong to exactly one data block")
+            target = static if has_static else market
+            if identifier in target:
+                raise ValueError(f"Duplicate LUAC ID: {identifier}")
+            if has_static:
+                for index, field in zip((1, 2, 3, 5, 10), ("SECURITY_DES", "issuer", "ticker", "rating", "industry")):
+                    require_text(record[index], field, row)
+                require_number(record[4], "maturity", row)
+                require_number(record[6], "maturity_years", row)
+                order.append(identifier)
+            else:
+                for index, field in zip((7, 8, 9), ("date", "oas_bp", "yield_pct")):
+                    require_number(record[index], field, row)
+            target[identifier] = record
 
-    if set(static) != set(market) or not static:
-        raise ValueError("LUAC static and market ID sets must match exactly")
-    data_dates = {excel_date(market[identifier][7], date_1904) for identifier in market}
-    if len(data_dates) != 1:
-        raise ValueError("LUAC market rows must use one data date")
+        if set(static) != set(market) or not static:
+            raise ValueError("LUAC static and market ID sets must match exactly")
+        data_dates = {excel_date(market[identifier][7], date_1904) for identifier in market}
+        if len(data_dates) != 1:
+            raise ValueError("LUAC market rows must use one data date")
+        resolved_date = data_dates.pop()
+        if data_date is not None and require_data_date(data_date) != resolved_date:
+            raise ValueError(f"LUAC workbook date {resolved_date} does not match --date {data_date}")
 
-    records: list[list[object]] = []
-    for identifier in order:
-        source, prices = static[identifier], market[identifier]
-        years = require_number(source[6], "maturity_years", 0)
-        oas = require_number(prices[8], "oas_bp", 0)
-        bond_yield = require_number(prices[9], "yield_pct", 0)
-        records.append([
-            identifier,
-            require_text(source[1], "SECURITY_DES", 0),
-            require_text(source[2], "issuer", 0),
-            require_text(source[3], "ticker", 0),
-            excel_date(source[4], date_1904),
-            require_text(source[5], "rating", 0),
-            years,
-            oas,
-            bond_yield,
-            require_text(source[10], "industry", 0),
-            quality_flags(years, oas, bond_yield),
-        ])
+        records = []
+        for identifier in order:
+            source, prices = static[identifier], market[identifier]
+            years = require_number(source[6], "maturity_years", 0)
+            oas = require_number(prices[8], "oas_bp", 0)
+            bond_yield = require_number(prices[9], "yield_pct", 0)
+            records.append([
+                identifier,
+                require_text(source[1], "SECURITY_DES", 0),
+                require_text(source[2], "issuer", 0),
+                require_text(source[3], "ticker", 0),
+                excel_date(source[4], date_1904),
+                require_text(source[5], "rating", 0),
+                years,
+                oas,
+                bond_yield,
+                require_text(source[10], "industry", 0),
+                quality_flags(years, oas, bond_yield),
+            ])
     result = {
         "schema_version": SCHEMA_VERSION,
-        "date": data_dates.pop(),
+        "date": resolved_date,
         "columns": list(COLUMNS),
         "peer_definitions": definitions,
         "records": records,
     }
     validate_luac(result)
     extract.source_mode = source_mode
+    extract.layout_mode = layout_mode
     return result
 
 
@@ -212,10 +274,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workbook", type=Path)
     parser.add_argument("--peers", required=True, type=Path, help="Peer Group workbook with TICKER and Peer Group columns")
+    parser.add_argument("--date", help="Required YYYY-MM-DD data date for the 10-column combined format")
     parser.add_argument("--output", type=Path, help="Write sanitized JSON here; defaults to stdout")
     parser.add_argument("--audit", type=Path, help="Write private validation summary outside the repository")
     arguments = parser.parse_args()
-    data = extract(arguments.workbook, peer_workbook=arguments.peers)
+    data = extract(arguments.workbook, peer_workbook=arguments.peers, data_date=arguments.date)
     count, anomalies = validate_luac(data)
     serialized = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n"
     if arguments.output:
@@ -228,10 +291,10 @@ def main() -> None:
             parser.error("Private audit must be outside the repository")
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         audit_path.write_text(
-            json.dumps({"date": data["date"], "records": count, "anomalies": anomalies, "source_mode": getattr(extract, "source_mode", "values")}, indent=2) + "\n",
+            json.dumps({"date": data["date"], "records": count, "anomalies": anomalies, "source_mode": getattr(extract, "source_mode", "values"), "layout_mode": getattr(extract, "layout_mode", "two_block")}, indent=2) + "\n",
             encoding="utf-8",
         )
-    print(f"LUAC snapshot date={data['date']} records={count} anomalies={anomalies} source={getattr(extract, 'source_mode', 'values')}", file=sys.stderr)
+    print(f"LUAC snapshot date={data['date']} records={count} anomalies={anomalies} source={getattr(extract, 'source_mode', 'values')} layout={getattr(extract, 'layout_mode', 'two_block')}", file=sys.stderr)
 
 
 if __name__ == "__main__":

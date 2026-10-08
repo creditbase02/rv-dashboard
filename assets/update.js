@@ -10,6 +10,7 @@
   };
   const ALIASES={Ins:'Insurance',Chem:'Chemical',HC:'Healthcare',Trans:'Transportation'};
   const LUAC_HEADERS=['ID','SECURITY_DES','LONG_COMP_NAME','TICKER','MATURITY','BB_COMPOSITE','MTY_YEARS_TDY','DATES',"SPREAD(ST='OAS',PRICING_SOURCE=BVAL,SIDE=BID)",'YIELD(YT=CONVENTION,PRICING_SOURCE=BVAL,SIDE=BID)','CLASSIFICATION_NAME(BICS,1,TYPE=ISSUER)'];
+  const LUAC_COMBINED_HEADERS=[...LUAC_HEADERS.slice(0,7),...LUAC_HEADERS.slice(8)];
   const SUPPLY_REQUIRED=['BB ID','CUSIP','Ticker','Corp Ticker','Pricing Date','Tranche Size','Tenor','Ind Sector','BB Composite'];
   const inputs=new Map([...document.querySelectorAll('input[type=file][data-metric]')].map(input=>[input.dataset.metric,input]));
   const names=new Map([...document.querySelectorAll('[data-file-name]')].map(output=>[output.dataset.fileName,output]));
@@ -20,7 +21,7 @@
   const password=document.querySelector('#upload-password');
   const serviceState=document.querySelector('#service-state');
   const drop=document.querySelector('#bulk-drop');
-  const luacFile=document.querySelector('#luac-file'),luacFileName=document.querySelector('#luac-file-name');
+  const luacFile=document.querySelector('#luac-file'),luacFileName=document.querySelector('#luac-file-name'),luacDataDate=document.querySelector('#luac-data-date');
   const luacValidationStatus=document.querySelector('#luac-validation-status'),luacValidationSummary=document.querySelector('#luac-validation-summary');
   const luacPublishStatus=document.querySelector('#luac-publish-status'),luacPublishButton=document.querySelector('#publish-luac'),luacPassword=document.querySelector('#luac-upload-password');
   const bqlConfirmWrap=document.querySelector('#bql-confirm-wrap'),bqlConfirm=document.querySelector('#bql-confirm');
@@ -141,7 +142,13 @@
     if(oas<-250||oas>5000)flags.push('oas_outlier');
     return flags;
   };
-  async function parseLuacWorkbook(file,peerDefinitions){
+  const luacInputDate=value=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(value||''))throw Error('10 欄合併格式必須填寫有效的行情資料日期');
+    const parsed=new Date(`${value}T00:00:00Z`);
+    if(Number.isNaN(parsed.getTime())||parsed.toISOString().slice(0,10)!==value)throw Error('10 欄合併格式必須填寫有效的行情資料日期');
+    return value;
+  };
+  async function parseLuacWorkbook(file,peerDefinitions,inputDate){
     if(!file||!file.name.toLowerCase().endsWith('.xlsx'))throw Error('LUAC 必須選取 .xlsx 檔案');
     const entries=await unzip(file),strings=sharedStrings(entries),book=workbookSheets(entries);
     if(book.sheets.size!==1)throw Error('LUAC Excel 必須且只能有一個工作表');
@@ -153,36 +160,57 @@
       if(!cached||cached.textContent==='')throw Error('BQL 公式沒有已儲存的快取值；請等待更新完成並儲存 Excel');
       sourceMode='bql_cache';
     }
-    const values=cells(doc,strings),headers=LUAC_HEADERS.map((_,index)=>values.get(`${column(index+1)}1`));
-    if(JSON.stringify(headers)!==JSON.stringify(LUAC_HEADERS))throw Error('LUAC Excel 欄位不符合必要格式');
-    const maximum=[...values.keys()].reduce((highest,address)=>Math.max(highest,Number(/\d+$/.exec(address)?.[0]||0)),1),staticRows=new Map(),marketRows=new Map(),order=[];
-    for(let row=2;row<=maximum;row++){
-      const record=LUAC_HEADERS.map((_,index)=>values.get(`${column(index+1)}${row}`)??null);
-      if(record.every(value=>!present(value)))continue;
-      const id=luacText(record[0],'ID',row,64),hasStatic=[1,2,3,4,5,6,10].some(index=>present(record[index])),hasMarket=[7,8,9].some(index=>present(record[index]));
-      if(hasStatic===hasMarket)throw Error(`LUAC 第 ${row} 列必須只屬於靜態或行情區塊`);
-      const target=hasStatic?staticRows:marketRows;
-      if(target.has(id))throw Error(`LUAC ID 重複：${id}`);
-      if(hasStatic){
-        for(const [index,field,maximum] of [[1,'SECURITY_DES',180],[2,'發行人',300],[3,'Ticker',32],[5,'信評',16],[10,'產業',160]])luacText(record[index],field,row,maximum);
-        luacNumber(record[4],'到期日',row);luacNumber(record[6],'剩餘年期',row);order.push(id);
-      }else{
-        luacNumber(record[7],'資料日期',row);luacNumber(record[8],'OAS',row);luacNumber(record[9],'Yield',row);
+    const values=cells(doc,strings),headers=LUAC_HEADERS.map((_,index)=>values.get(`${column(index+1)}1`)??null),combinedHeaders=headers.slice(0,10);
+    let layoutMode;
+    if(JSON.stringify(headers)===JSON.stringify(LUAC_HEADERS))layoutMode='two_block';
+    else if(JSON.stringify(combinedHeaders)===JSON.stringify(LUAC_COMBINED_HEADERS)&&!present(headers[10]))layoutMode='combined';
+    else throw Error('LUAC Excel 欄位不符合必要的 10 欄合併格式或 11 欄雙區塊格式');
+    const maximum=[...values.keys()].reduce((highest,address)=>Math.max(highest,Number(/\d+$/.exec(address)?.[0]||0)),1);
+    let date,records;
+    if(layoutMode==='combined'){
+      date=luacInputDate(inputDate);
+      const identifiers=new Set();records=[];
+      for(let row=2;row<=maximum;row++){
+        const record=LUAC_COMBINED_HEADERS.map((_,index)=>values.get(`${column(index+1)}${row}`)??null);
+        if(record.every(value=>!present(value)))continue;
+        const id=luacText(record[0],'ID',row,64);
+        if(identifiers.has(id))throw Error(`LUAC ID 重複：${id}`);
+        identifiers.add(id);
+        const security=luacText(record[1],'SECURITY_DES',row,180),issuer=luacText(record[2],'發行人',row,300),ticker=luacText(record[3],'Ticker',row,32),maturity=luacNumber(record[4],'到期日',row),rating=luacText(record[5],'信評',row,16),years=luacNumber(record[6],'剩餘年期',row),oas=luacNumber(record[7],'OAS',row),bondYield=luacNumber(record[8],'Yield',row),industry=luacText(record[9],'產業',row,160);
+        records.push([id,security,issuer,ticker,dateFromSerial(maturity,book.date1904),rating,years,oas,bondYield,industry,luacFlags(years,oas,bondYield)]);
       }
-      target.set(id,record);
+    }else{
+      const staticRows=new Map(),marketRows=new Map(),order=[];
+      for(let row=2;row<=maximum;row++){
+        const record=LUAC_HEADERS.map((_,index)=>values.get(`${column(index+1)}${row}`)??null);
+        if(record.every(value=>!present(value)))continue;
+        const id=luacText(record[0],'ID',row,64),hasStatic=[1,2,3,4,5,6,10].some(index=>present(record[index])),hasMarket=[7,8,9].some(index=>present(record[index]));
+        if(hasStatic===hasMarket)throw Error(`LUAC 第 ${row} 列必須只屬於靜態或行情區塊`);
+        const target=hasStatic?staticRows:marketRows;
+        if(target.has(id))throw Error(`LUAC ID 重複：${id}`);
+        if(hasStatic){
+          for(const [index,field,limit] of [[1,'SECURITY_DES',180],[2,'發行人',300],[3,'Ticker',32],[5,'信評',16],[10,'產業',160]])luacText(record[index],field,row,limit);
+          luacNumber(record[4],'到期日',row);luacNumber(record[6],'剩餘年期',row);order.push(id);
+        }else{
+          luacNumber(record[7],'資料日期',row);luacNumber(record[8],'OAS',row);luacNumber(record[9],'Yield',row);
+        }
+        target.set(id,record);
+      }
+      if(!staticRows.size||staticRows.size!==marketRows.size||[...staticRows.keys()].some(id=>!marketRows.has(id)))throw Error('LUAC 靜態與行情區塊的 ID 必須完整一致');
+      const dates=new Set([...marketRows.values()].map(record=>dateFromSerial(record[7],book.date1904)));
+      if(dates.size!==1)throw Error('LUAC 行情資料日期不一致');
+      date=[...dates][0];
+      if(inputDate&&luacInputDate(inputDate)!==date)throw Error(`LUAC Excel 內嵌日期 ${date} 與填寫日期 ${inputDate} 不一致`);
+      records=order.map(id=>{
+        const source=staticRows.get(id),market=marketRows.get(id),years=luacNumber(source[6],'剩餘年期',0),oas=luacNumber(market[8],'OAS',0),bondYield=luacNumber(market[9],'Yield',0);
+        return [id,luacText(source[1],'SECURITY_DES',0,180),luacText(source[2],'發行人',0,300),luacText(source[3],'Ticker',0,32),dateFromSerial(source[4],book.date1904),luacText(source[5],'信評',0,16),years,oas,bondYield,luacText(source[10],'產業',0,160),luacFlags(years,oas,bondYield)];
+      });
     }
-    if(!staticRows.size||staticRows.size!==marketRows.size||[...staticRows.keys()].some(id=>!marketRows.has(id)))throw Error('LUAC 靜態與行情區塊的 ID 必須完整一致');
-    const dates=new Set([...marketRows.values()].map(record=>dateFromSerial(record[7],book.date1904)));
-    if(dates.size!==1)throw Error('LUAC 行情資料日期不一致');
-    const records=order.map(id=>{
-      const source=staticRows.get(id),market=marketRows.get(id),years=luacNumber(source[6],'剩餘年期',0),oas=luacNumber(market[8],'OAS',0),bondYield=luacNumber(market[9],'Yield',0);
-      return [id,luacText(source[1],'SECURITY_DES',0,180),luacText(source[2],'發行人',0,300),luacText(source[3],'Ticker',0,32),dateFromSerial(source[4],book.date1904),luacText(source[5],'信評',0,16),years,oas,bondYield,luacText(source[10],'產業',0,160),luacFlags(years,oas,bondYield)];
-    });
     if(records.length<1||records.length>20000)throw Error(`LUAC 債券筆數 ${records.length} 超出允許範圍`);
-    const data={schema_version:window.LuacModel.SCHEMA_VERSION,date:[...dates][0],columns:window.LuacModel.COLUMNS,peer_definitions:peerDefinitions,records};
+    const data={schema_version:window.LuacModel.SCHEMA_VERSION,date,columns:window.LuacModel.COLUMNS,peer_definitions:peerDefinitions,records};
     window.LuacModel.validateSnapshot(data);
     if(new TextEncoder().encode(JSON.stringify({data})).byteLength>4*1024*1024)throw Error('LUAC 公開資料超過 4 MiB 上限');
-    return {data,sourceMode};
+    return {data,sourceMode,layoutMode};
   }
   async function tableFromWorkbook(file,required,label){
     if(!file||!file.name.toLowerCase().endsWith('.xlsx'))throw Error(`${label} 必須選取 .xlsx 檔案`);
@@ -283,7 +311,7 @@
   }
   function clear(){state.files={};state.data=null;state.token=null;for(const input of inputs.values())input.value='';for(const output of names.values())output.textContent='尚未選取';validationSummary.hidden=true;publishButton.disabled=true;setStatus(validationStatus,'neutral','等待選取四份 Excel。');setStatus(publishStatus,'neutral','尚未送出。');}
   function refreshLuacActions(){const confirmed=state.luacSourceMode!=='bql_cache'||bqlConfirm.checked;luacPublishButton.disabled=!(state.luacData&&state.luacPublishEligible&&confirmed&&state.config.luac_enabled);bloombergButton.disabled=!(state.bridgeReady&&state.luacData&&confirmed);}
-  function clearLuac(){state.luacData=null;state.luacSourceMode=null;state.luacPublishEligible=false;luacFile.value='';luacFileName.textContent='尚未選取';luacValidationSummary.hidden=true;bqlConfirm.checked=false;bqlConfirmWrap.hidden=true;bloombergSummary.hidden=true;refreshLuacActions();setStatus(luacValidationStatus,'neutral','等待選取 LUAC Excel。');setStatus(luacPublishStatus,'neutral','尚未送出。');}
+  function clearLuac(){state.luacData=null;state.luacSourceMode=null;state.luacPublishEligible=false;luacFile.value='';luacDataDate.value='';luacFileName.textContent='尚未選取';luacValidationSummary.hidden=true;bqlConfirm.checked=false;bqlConfirmWrap.hidden=true;bloombergSummary.hidden=true;refreshLuacActions();setStatus(luacValidationStatus,'neutral','等待選取 LUAC Excel。');setStatus(luacPublishStatus,'neutral','尚未送出。');}
   function refreshSupplyActions(){supplyPublishButton.disabled=!(state.supplyData&&state.supplyPublishEligible&&state.config.supply_enabled);}
   function clearPeer(){peerFile.value='';peerFileName.textContent='沿用現行 mapping';state.luacData=null;state.luacSourceMode=null;state.luacPublishEligible=false;state.supplyData=null;bqlConfirm.checked=false;bqlConfirmWrap.hidden=true;refreshLuacActions();refreshSupplyActions();setStatus(luacValidationStatus,'neutral','等待選取 LUAC Excel。');setStatus(supplyValidationStatus,'neutral','等待選取 Supply Excel。');}
   function clearSupply(){state.supplyUpload=null;state.supplyData=null;state.supplyPublishEligible=false;supplyFile.value='';supplyFileName.textContent='尚未選取';supplyValidationSummary.hidden=true;refreshSupplyActions();setStatus(supplyValidationStatus,'neutral','等待選取 Supply Excel。');setStatus(supplyPublishStatus,'neutral','尚未送出。');}
@@ -313,11 +341,12 @@
     try{
       const definitions=await parsePeerDefinitions(peerFile.files[0]||null,state.currentLuacPeers);
       if(!definitions.length)throw Error('正式站與上傳檔都沒有 Peer Group mapping');
-      const parsed=await parseLuacWorkbook(file,definitions),data=parsed.data,count=data.records.length,anomalies=data.records.filter(record=>record[10].length).length;
+      const parsed=await parseLuacWorkbook(file,definitions,luacDataDate.value),data=parsed.data,count=data.records.length,anomalies=data.records.filter(record=>record[10].length).length;
       if(state.currentLuacDate&&data.date<state.currentLuacDate)throw Error(`資料日期 ${data.date} 早於正式站 ${state.currentLuacDate}`);
       if(state.currentLuacCount){const low=state.currentLuacCount*.8,high=state.currentLuacCount*1.2;if(count<low||count>high)throw Error(`債券筆數由 ${state.currentLuacCount} 變為 ${count}，超過 ±20%，需走人工 PR`);}
       state.luacData=data;state.luacSourceMode=parsed.sourceMode;state.luacPublishEligible=!state.currentLuacDate||data.date>=state.currentLuacDate;luacFile.value='';luacFileName.textContent='原始檔已從程式狀態釋放';
-      document.querySelector('#luac-summary-date').textContent=data.date;document.querySelector('#luac-summary-count').textContent=count.toLocaleString('en-US');document.querySelector('#luac-summary-anomalies').textContent=anomalies.toLocaleString('en-US');document.querySelector('#luac-summary-source').textContent=parsed.sourceMode==='bql_cache'?'BQL 已儲存快取':'純值 Excel';luacValidationSummary.hidden=false;
+      const sourceLabel=parsed.sourceMode==='bql_cache'?'BQL 已儲存快取':'純值 Excel',layoutLabel=parsed.layoutMode==='combined'?'10 欄合併':'11 欄雙區塊';
+      document.querySelector('#luac-summary-date').textContent=data.date;document.querySelector('#luac-summary-count').textContent=count.toLocaleString('en-US');document.querySelector('#luac-summary-anomalies').textContent=anomalies.toLocaleString('en-US');document.querySelector('#luac-summary-source').textContent=`${sourceLabel}（${layoutLabel}）`;luacValidationSummary.hidden=false;
       bqlConfirm.checked=false;bqlConfirmWrap.hidden=parsed.sourceMode!=='bql_cache';
       const sameDate=data.date===state.currentLuacDate?' 資料日與正式站相同，將建立同日更正 PR。':'';
       setStatus(luacValidationStatus,'success',`驗證通過。原始 Excel 已釋放，只保留精簡公開資料。${sameDate}`);refreshLuacActions();
@@ -463,6 +492,7 @@
   document.querySelector('#test-service').addEventListener('click',testService);
   publishButton.addEventListener('click',publish);
   luacFile.addEventListener('change',()=>{if(luacFile.files[0]){luacFileName.textContent=luacFile.files[0].name;state.luacData=null;state.luacSourceMode=null;state.luacPublishEligible=false;luacValidationSummary.hidden=true;bqlConfirm.checked=false;bqlConfirmWrap.hidden=true;refreshLuacActions();setStatus(luacValidationStatus,'neutral','檔案已變更，請重新驗證。');}});
+  luacDataDate.addEventListener('change',()=>{state.luacData=null;state.luacSourceMode=null;state.luacPublishEligible=false;luacValidationSummary.hidden=true;bqlConfirm.checked=false;bqlConfirmWrap.hidden=true;refreshLuacActions();setStatus(luacValidationStatus,'neutral','行情資料日期已變更，請重新驗證。');});
   document.querySelector('#clear-luac').addEventListener('click',clearLuac);
   document.querySelector('#validate-luac').addEventListener('click',validateLuacFile);
   bqlConfirm.addEventListener('change',refreshLuacActions);bloombergButton.addEventListener('click',probeBloomberg);

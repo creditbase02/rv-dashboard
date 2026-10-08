@@ -22,10 +22,10 @@ class LuacTests(unittest.TestCase):
     def setUpClass(cls):
         cls.snapshot = json.loads((ROOT / "assets" / "luac-bonds.json").read_text(encoding="utf-8"))
 
-    def extract(self, directory: Path, variant: str = "valid", count: int = 40, peers: str = "valid", data_date: str = "2026-09-16"):
+    def extract(self, directory: Path, variant: str = "valid", count: int = 40, peers: str = "valid", data_date: str = "2026-09-16", input_date: str | None = None):
         workbook = make_fixture(directory / f"{variant}-{count}-{data_date}.xlsx", variant, data_date, count)
         peer_workbook = make_peer_fixture(directory / f"{variant}-{count}-{peers}-peers.xlsx", peers)
-        return extract(workbook, peer_workbook=peer_workbook)
+        return extract(workbook, peer_workbook=peer_workbook, data_date=input_date)
 
     def test_initial_public_snapshot_contract(self):
         count, anomalies = validate_luac(self.snapshot)
@@ -56,11 +56,33 @@ class LuacTests(unittest.TestCase):
 
     def test_strict_two_block_extraction(self):
         with tempfile.TemporaryDirectory() as directory:
-            result = self.extract(Path(directory))
+            root = Path(directory)
+            result = self.extract(root)
             self.assertEqual(validate_luac(result), (40, 0))
             self.assertEqual(result["records"][0][0], "US0000000000")
             self.assertEqual(result["records"][0][4], "2030-09-15")
             self.assertEqual(result["peer_definitions"], PEER_GROUPS)
+            with self.assertRaisesRegex(ValueError, "does not match --date"):
+                self.extract(root, input_date="2026-09-17")
+
+    def test_combined_value_extraction_requires_explicit_date(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = self.extract(root, variant="combined", input_date="2026-09-16")
+            self.assertEqual(validate_luac(result), (40, 0))
+            self.assertEqual(result["date"], "2026-09-16")
+            self.assertEqual(result["records"][0][7:10], [120.0, 5.0, "Technology"])
+            self.assertEqual(getattr(extract, "layout_mode"), "combined")
+            workbook = make_fixture(root / "combined-no-date.xlsx", "combined")
+            peers = make_peer_fixture(root / "combined-no-date-peers.xlsx")
+            with self.assertRaisesRegex(ValueError, "requires --date"):
+                extract(workbook, peer_workbook=peers)
+
+    def test_combined_value_extraction_rejects_bad_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for variant, message in (("combined-missing", "invalid oas_bp"), ("combined-duplicate", "Duplicate LUAC ID")):
+                with self.subTest(variant=variant), self.assertRaisesRegex(ValueError, message):
+                    self.extract(Path(directory), variant=variant, input_date="2026-09-16")
 
     def test_peer_mapping_rejects_formulas_duplicates_and_missing_values(self):
         cases = (
