@@ -41,11 +41,12 @@
 
 ### LUAC 單券資料
 
-正式來源必須是單一工作表、固定 11 欄、BICS Level 1 產業、靜態與行情雙區塊的 `.xlsx`。允許無公式純值檔，或恰好一個 BQL 公式且已完成更新、儲存快取值的檔案；其他公式、缺失快取、缺值、非有限數字、重複或不匹配 ID、或混合資料日都拒絕整批更新。瀏覽器無法重新計算 BQL，發布前必須由使用者確認已在 Excel 更新完成並儲存。公開 schema v2 另含 `peer_definitions`（TICKER 對應 Peer Group），`columns` 與每筆記錄仍為 11 欄；`bonds.html` 的第二層篩選可在產業與 Peer Group 之間切換（切換時清除另一邊的勾選，兩者不會同時生效），Peer Group 模式只顯示已分類債券。Peer mapping 是含 `TICKER` 與 `Peer Group` 兩欄的選填 Excel（與 Supply 共用同一份）；網頁未提供時沿用目前公開快照內的 mapping。以下命令只輸出精簡公開 contract，私人 audit 必須在 repo 外：
+正式來源必須是單一工作表、BICS Level 1 產業的 `.xlsx`，支援兩種輸入格式：每券一列的 10 欄合併格式，或原有 11 欄靜態／行情雙區塊格式。10 欄格式依序為 ID、SECURITY_DES、LONG_COMP_NAME、TICKER、MATURITY、BB_COMPOSITE、MTY_YEARS_TDY、OAS、Yield、BICS Level 1，因檔內沒有 DATES，上傳頁必須由使用者輸入行情資料日期；不得依檔名、檔案時間或系統日期推定。11 欄格式仍從各行情列的 DATES 讀取單一資料日；若上傳頁另填日期，必須與檔內日期一致。允許無公式純值檔，或恰好一個 BQL 公式且已完成更新、儲存快取值的檔案；其他公式、缺失快取、缺值、非有限數字、重複 ID、舊格式不匹配 ID、或舊格式混合資料日都拒絕整批更新。瀏覽器無法重新計算 BQL，發布前必須由使用者確認已在 Excel 更新完成並儲存。公開 schema v2 另含 `peer_definitions`（TICKER 對應 Peer Group），`columns` 與每筆公開記錄仍為 11 欄；`bonds.html` 的第二層篩選可在產業與 Peer Group 之間切換（切換時清除另一邊的勾選，兩者不會同時生效），Peer Group 模式只顯示已分類債券。Peer mapping 是含 `TICKER` 與 `Peer Group` 兩欄的選填 Excel（與 Supply 共用同一份）；網頁未提供時沿用目前公開快照內的 mapping。以下命令只輸出精簡公開 contract，私人 audit 必須在 repo 外；10 欄格式加上 `--date YYYY-MM-DD`，11 欄格式可省略：
 
 ```sh
 python3 scripts/extract_luac.py <LUAC.xlsx> \
   --peers <Peer-Groups.xlsx> \
+  --date YYYY-MM-DD \
   --output assets/luac-bonds.json \
   --audit <repo之外>/luac-audit.json
 ```
