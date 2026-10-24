@@ -22,7 +22,8 @@ concurrency:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    # Match the OS supported by the pinned Playwright version.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
