@@ -1,0 +1,9 @@
+<header class="lab-nav"><a class="lab-brand" href="./"><span class="lab-mark">RV</span> RESEARCH LAB <span class="lab-tag">LOCAL TEST</span></a><a class="lab-production" href="https://creditbase02.github.io/rv-dashboard/bonds.html" target="_blank" rel="noreferrer">正式單券比較 ↗</a></header>
+<section class="lab-hero">
+  <div><p class="lab-eyebrow">BLOOMBERG BQL · LOCAL SNAPSHOT</p><h1>單券相對價值<br><span>API 測試工作台</span></h1><p class="lab-lead">從這台電腦的 Bloomberg 取得一次快照，直接比較 Yield、OAS 與相同期限的信評曲線。</p><div class="lab-chips"><span>BVAL · BID</span><span>Convention Yield</span><span>BICS Level 1</span></div></div>
+  <aside class="lab-action-card"><span id="connection-badge" class="lab-badge">等待檢查連線</span><h2>由你決定何時取數</h2><p>每次按鈕只送出一次全量查詢。沒有背景更新，不會自動重試。</p><button id="fetch-snapshot" type="button" class="lab-primary" disabled>取得一次 BQL 快照 <span aria-hidden="true">↗</span></button><div class="lab-card-footer"><button id="check-connection" type="button">檢查連線</button><span>僅預覽 · 無發布功能</span></div></aside>
+</section>
+<div id="lab-status" class="lab-status" role="status" aria-live="polite">正在檢查本機取數服務；尚未查詢市場資料。</div>
+<section class="lab-stats" aria-label="快照摘要"><div><span>行情資料日期</span><strong id="lab-date">—</strong><small>以 BQL 回傳日期為準</small></div><div><span>單券筆數</span><strong id="lab-count">—</strong><small>完整 LUAC 查詢範圍</small></div><div><span>品質旗標</span><strong id="lab-anomalies">—</strong><small>異常券預設排除於圖表與曲線</small></div><div><span>本次取得時間</span><strong id="lab-fetched">—</strong><small>台北時間 · 非持續串流</small></div></section>
+<p class="lab-review-note"><strong>API 測試快照</strong>　結構檢查通過不等於 Excel 一致性核准。先前比對仍有 Yield 與靜態欄位差異，本工作台不會將資料發布至正式站。</p>
+<section id="lab-empty" class="lab-empty"><span class="lab-empty-icon" aria-hidden="true">↗</span><h2>準備好，再抓一次。</h2><p>按上方「取得一次 BQL 快照」，完成後會顯示單券散點圖、篩選與相對價值排名。</p><small>資料只留在本頁記憶體；關閉或重新整理頁面即清除。</small></section>

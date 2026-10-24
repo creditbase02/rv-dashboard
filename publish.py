@@ -81,6 +81,9 @@ def validate_public(output: Path) -> None:
         output / "assets" / "forecast.css",
         output / "update.html",
         output / "bonds.html",
+        output / "bql.html",
+        output / "assets" / "bql-viewer.js",
+        output / "assets" / "lab.js",
         output / "supply.html",
         output / "integration-manifest.json",
     )
@@ -141,6 +144,8 @@ def build() -> tuple[Path, dict]:
         (temporary / "update.html").write_text(update_page, encoding="utf-8")
         (temporary / "bonds.html").write_text(bonds_page, encoding="utf-8")
         (temporary / "supply.html").write_text(supply_page, encoding="utf-8")
+        import runpy
+        runpy.run_path(str(ROOT / 'bql-test-site/build.py'))['build'](temporary, production=True)
         (temporary / ".nojekyll").write_text("", encoding="utf-8")
         manifest = {
             "schema_version": 1,

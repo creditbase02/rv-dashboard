@@ -4,6 +4,8 @@
 .sites-runtime/
 __pycache__/
 node_modules/
+.venv-bql/
+bql-test-site/dist/
 public/
 data-audit.json
 *.xlsx

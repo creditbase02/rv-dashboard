@@ -72,6 +72,66 @@ class BloombergBridgeTests(unittest.TestCase):
         self.assertEqual(response.status, 400)
         self.assertEqual(body["error"], "invalid_payload")
 
+    def test_actual_requests_reject_untrusted_or_absent_origin(self):
+        for origin in (None, 'https://untrusted.example'):
+            headers = self.headers()
+            if origin is None:
+                headers.pop('Origin')
+            else:
+                headers['Origin'] = origin
+            with patch.object(bloomberg_bridge, 'run_probe') as run:
+                self.connection.request('POST', '/probe', body='{"data":{}}', headers=headers)
+                response, body = self.response()
+            self.assertEqual(response.status, 403)
+            self.assertEqual(body, {'error':'origin_not_allowed'})
+            run.assert_not_called()
+
+    def test_preview_is_disabled_by_default_and_rejects_other_origins(self):
+        for enabled,origin in ((False,'http://127.0.0.1:8767'),(False,'https://creditbase02.github.io'),(True,'https://untrusted.example')):
+            headers=self.headers(); headers['Origin']=origin
+            with patch.object(bloomberg_bridge,'PREVIEW_ENABLED',enabled),patch.object(bloomberg_bridge,'run_preview') as preview:
+                self.connection.request('POST','/preview',body='{}',headers=headers)
+                response,body=self.response()
+                self.assertEqual(response.status,403)
+                preview.assert_not_called()
+
+    def test_production_preview_requires_opt_in_token_and_empty_body(self):
+        with patch.object(bloomberg_bridge,'PREVIEW_ENABLED',True),patch.object(bloomberg_bridge,'run_preview',return_value={'ok':True}) as preview:
+            self.connection.request('POST','/preview',body='{}',headers=self.headers(False))
+            response,body=self.response()
+            self.assertEqual(response.status,401)
+            preview.assert_not_called()
+            self.connection.request('POST','/preview',body='{}',headers=self.headers())
+            response,body=self.response()
+            self.assertEqual(response.status,200)
+            preview.assert_called_once_with()
+
+    def test_local_preview_requires_token_and_empty_body_and_has_no_publish_route(self):
+        headers=self.headers(); headers['Origin']='http://127.0.0.1:8767'
+        with patch.object(bloomberg_bridge,'PREVIEW_ENABLED',True),patch.object(bloomberg_bridge,'run_preview',return_value={'ok':True}) as preview:
+            self.connection.request('POST','/preview',body='{}',headers=headers)
+            response,body=self.response()
+            self.assertEqual(response.status,200)
+            preview.assert_called_once_with()
+            self.connection.request('POST','/preview',body='{"filename":"private"}',headers=headers)
+            response,body=self.response()
+            self.assertEqual(response.status,400)
+            self.assertEqual(preview.call_count,1)
+            headers.pop('Authorization')
+            self.connection.request('POST','/preview',body='{}',headers=headers)
+            response,body=self.response()
+            self.assertEqual(response.status,401)
+            self.connection.request('POST','/publish/luac',body='{}',headers=headers)
+            response,body=self.response()
+            self.assertEqual(response.status,404)
+
+    def test_malformed_payload_never_leaks_validation_details(self):
+        for payload in ('[]', 'null', '{"data":{"private":"identifier"}}'):
+            self.connection.request('POST', '/probe', body=payload, headers=self.headers())
+            response, body = self.response()
+            self.assertEqual(response.status, 400)
+            self.assertEqual(body, {'error':'invalid_payload'})
+
     def test_comparison_reports_only_aggregate_thresholds(self):
         columns = ["id", "security_des", "issuer", "ticker", "maturity", "rating", "maturity_years", "oas_bp", "yield_pct", "industry", "flags"]
         baseline = {"schema_version": 2, "date": "2026-09-16", "columns": columns, "peer_definitions": [{"name": "Banks", "tickers": ["TK"]}], "records": [["ID1", "Bond", "Issuer", "TK", "2030-09-15", "A", 4, 100, 5, "Technology", []]]}

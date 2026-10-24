@@ -55,15 +55,19 @@ Yield、期限或 OAS 超出公開規則時保留原始數值並標記，但預�
 
 LUAC 自動資料 PR 的安全條件為：作者等於 `RV_UPLOAD_APP_LOGIN`、branch 以 `automation/luac-data-` 開頭、label 為 `automated-luac-data`、diff 只有 `assets/luac-bonds.json`，且完整 CI 通過。`LUAC_UPLOAD_ENABLED` 與網站 `luac_enabled` 是獨立開關，未完成公司網路 preview 與當期資料核對前保持 `false`。
 
-Bloomberg Desktop API 僅可在已登入 Terminal 的公司 Windows 電腦做唯讀實驗：
+Bloomberg BQL 一鍵診斷仍是唯讀可行性驗證，尚未接正式發布。公司電腦必須先確認 Bloomberg 支援本機 Python 程序使用 BQL；僅能在遠端 BQNT 執行不算網頁連線成功。一般 `blpapi` 的 ReferenceData 欄位不得視為原 BQL 等價來源。
 
-```powershell
-python scripts/probe_bloomberg_luac.py --known-security "<approved Bloomberg ID>" --snapshot-output "$env:TEMP\luac-api.json" --compare "$env:TEMP\luac-excel.json"
-```
+完整操作步驟與失敗判定見 `BQL_DIAGNOSTICS.md`。先建置本機網站並啟動 8766 靜態服務，再執行 `powershell -File scripts/start_bloomberg_bridge.ps1`；未確認環境時只顯示缺項。Bloomberg 確認本機呼叫方式後才加 `-BqlPython <核准執行檔> -SupportedRuntimeConfirmed`。bridge 僅綁定 loopback，使用隨機 token 與來源限制，不呼叫發布 Worker。
 
-網站式診斷可在 repository 根目錄執行 `powershell -File scripts/start_bloomberg_bridge.ps1`。bridge 只綁定 `127.0.0.1:8768`、使用每次啟動的隨機 token，只回傳彙總比對結果，且不呼叫發布 Worker。
+查詢保留原 BQL 的 active／LUACTRUU 成分交集、BVAL BID OAS 與 Convention Yield，產業維持 BICS Level 1。用 repository 外的比較副本同工作階段刷新驗證，不覆寫原檔。先查單券，再由明確按鈕觸發完整查詢；僅回傳彙總結果。行情日期必須來自 BQL OAS／Yield 的 DATE metadata，不從執行日期或 Excel 日期補值。ID、必填欄位、靜態欄位與產業一致，OAS ≤0.5 bp、Yield ≤0.01 個百分點後，才能評估正式整合；缺值、重複、部分回應、日期未確認、權限錯誤或逾時一律不通過。
 
-診斷只輸出成功狀態、筆數、欄位覆蓋與錯誤分類。完整 universe、唯一 ID、必填欄位 100%，且同工作階段比對達 OAS ≤0.5 bp、Yield ≤0.01 個百分點前，不得接正式更新。
+### 本機 BQL 單券測試站
+
+`bql-test-site/` 保留獨立本機實驗站，使用 8767；同一套工作台程式另由 `publish.py` 產生正式 `bql.html`，並從單券頁提供入口。工作台不打包任何 API 行情快照。正式頁需由 `python scripts/start_bql_preview.py` 啟動公司電腦的 loopback bridge；Excel 更新及發布保留原有流程。`python bql-test-site/serve.py` 則啟動本機靜態站與 8768 bridge。兩者均使用已完成本機取數測試的 polars-bloomberg 路徑。啟動與 health 不發市場查詢；只有使用者按鈕發出一次 full-universe 查詢，不重刷 Excel、不自動重試。
+
+一般 `/probe` 保持只回彙總；新增 `/preview` 須由 `--enable-preview` 明確啟用，且只接受正式 GitHub Pages Origin 或 8767 的本機 Origin，加上隨機 token、空 JSON body。它沿用本機 checkout 的既有 Peer Group mapping，只將通過 schema v2、唯一 ID、數值及 BQL 行情日期驗證的快照回到頁面記憶體，不保存或上傳原始資料。工作台沒有發布端點或 GitHub credentials，且固定標示未經正式 Excel 一致性核准。使用前同步 main，避免本機 mapping 落後。
+
+建置包不含任何市場 JSON；失敗保留畫面上一次快照與日期，禁止改標為更新成功。SDK 等待上限 120 秒、子程序總上限 270 秒、頁面等待 280 秒。詳見 `bql-test-site/README.md`。
 
 ### IG Supply 資料
 

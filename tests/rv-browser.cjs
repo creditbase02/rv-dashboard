@@ -333,8 +333,8 @@ async function runSupply(browser,base,width=1440){
   assert.match(await page.locator('.forecast-table').innerText(),/\$330Bn/);
   if(width===375)assert.equal(await page.locator('.forecast-table-wrap').evaluate(node=>node.scrollWidth>node.clientWidth),true);
   await page.locator('#ytd-forecast-comparison:not([hidden])').waitFor();
-  assert.equal(await page.locator('#ytd-forecast-comparison').innerText(),'BofA 2026E $2.1Tn · 已達 80%');
-  if(supplyMonth===9)assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),'BofA 9月E $190Bn · 已達 103%');
+  assert.equal(await page.locator('#ytd-forecast-comparison').innerText(),`BofA 2026E $2.1Tn · 已達 ${Math.round(data.ytd_usd/2.1e12*100)}%`);
+  if(supplyMonth===9)assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),`BofA 9月E $190Bn · 已達 ${Math.round(data.mtd_usd/190e9*100)}%`);
   else assert.equal(await page.locator('#mtd-forecast-comparison').isHidden(),true);
 
   const industryName=data.breakdowns.industry[0][0],industryTop=Object.fromEntries(data.top_tickers.ytd.industry)[industryName];
@@ -701,6 +701,8 @@ async function runBloombergDiagnostic(browser,base,fixture,currentDate){
   const {context,page,requests,bridgeRequests}=await openUploader(browser,base,currentDate,1440,currentDate,40,true);
   await page.locator('#bloomberg-diagnostic').waitFor({state:'visible'});
   await page.locator('#luac-file').setInputFiles(fixture.workbook);await page.locator('#peer-group-file').setInputFiles(fixture.peers);await page.locator('#validate-luac').click();await page.locator('#luac-validation-status.success').waitFor();await page.locator('#bql-confirm').check();
+  assert.equal(await page.locator('#probe-bloomberg').isDisabled(),true);
+  await page.locator('#bloomberg-session-confirm').check();
   await page.locator('#probe-bloomberg').click();await page.locator('#bloomberg-status.success').waitFor();
   const probe=bridgeRequests.find(item=>item.url.endsWith('/probe'));assert.ok(probe);assert.deepEqual(Object.keys(JSON.parse(probe.body)),['data']);assert.equal(/\.xlsx|source_file|sha256|\/Users\//i.test(probe.body),false);
   assert.equal(requests.some(item=>item.url.endsWith('/publish/luac')),false,'diagnostic must not call the Worker publish endpoint');
