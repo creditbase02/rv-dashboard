@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 import shutil
+import sys
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -25,9 +26,13 @@ def build(output=None, production=False):
     page = page.replace('<body>', '<body class="lab-body">')
     intro = (HERE / 'intro.html').read_text(encoding='utf-8')
     if production:
+        sys.path.insert(0, str(ROOT))
+        from scripts.build_bql_launcher import source_version
+        package_version = source_version()
+        intro = intro.replace('Launcher.zip" download=', f'Launcher.zip?v={package_version}" download=')
         page = page.replace('RV Lab｜BQL 單券測試站', 'BQL API 預覽｜單券相對價值')
         intro = intro.replace('LOCAL TEST', 'API PREVIEW').replace('API 測試工作台', 'API 預覽工作台')
-        intro += '<details class="lab-review-note"><summary>首次使用：連接公司 Bloomberg 電腦</summary><p>在已登入 Terminal 的電腦執行 <code>python scripts/start_bql_preview.py</code>，啟動器會開啟附有本次連線憑證的正式頁面。若瀏覽器詢問本機網路存取權限，請允許此站連線。保持啟動器視窗開啟；關閉後即停止服務。</p><p><a href="https://github.com/creditbase02/rv-dashboard/blob/main/BQL_DIAGNOSTICS.md" target="_blank" rel="noreferrer">安裝與操作說明 ↗</a> · <a href="update.html">原有 Excel 更新入口 ↗</a></p></details>'
+        intro += '<p class="lab-review-note"><a href="update.html">原有 Excel 更新入口 ↗</a> · <a href="https://github.com/creditbase02/rv-dashboard/blob/main/BQL_DIAGNOSTICS.md" target="_blank" rel="noreferrer">進階設定與診斷說明 ↗</a></p>'
     main = '<main id="main-content" class="bond-shell">'
     page = page.replace(main, main + intro + '<div id="explorer" hidden>')
     page = page.replace('</main>', '</div></main>')
