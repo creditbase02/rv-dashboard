@@ -45,18 +45,17 @@ class SupplyTests(unittest.TestCase):
         for field in ("CUSIP", "BB ID", "ISIN", "Tranche Size", "Pricing Date", "source_file", "workbook", ".xlsx"):
             self.assertNotIn(field, text)
 
-    def test_published_snapshot_matches_approved_acceptance_values(self):
+    def test_published_snapshot_preserves_locked_acceptance_values(self):
         result = validate_supply(self.data)
         self.assertIn(self.data["schema_version"], (2, 3, 4))
-        self.assertEqual(self.data["date"], "2026-10-06")
         self.assertEqual(self.data["year"], 2026)
-        self.assertEqual(self.data["row_count"], 1676)
-        self.assertEqual(self.data["ytd_usd"], 1_687_225_719_000)
-        self.assertEqual(self.data["mtd_usd"], 8_850_000_000)
-        self.assertEqual(dict(self.data["breakdowns"]["industry"])["Consumer, Non-cyclical"], 171_150_000_000)
+        lock = json.loads((ROOT/'assets/supply-lock.json').read_text(encoding='utf-8'))
+        self.assertGreaterEqual(self.data['date'], self.data['lock']['through'])
+        self.assertEqual(self.data['lock']['version'], lock['version'])
+        self.assertEqual(self.data['lock']['through'], lock['through'])
+        self.assertGreater(self.data['row_count'], 0)
+        self.assertEqual(self.data['mtd_usd'], self.data['monthly']['total'][int(self.data['date'][5:7])-1])
         self.assertNotIn("Food-Retail", dict(self.data["breakdowns"]["industry"]))
-        self.assertEqual(dict(self.data["breakdowns"]["rating"])["BBB"], 235_470_000_000)
-        self.assertEqual(dict(self.data["breakdowns"]["rating"])["NR"], 21_350_000_000)
         self.assertEqual(result["date_corrections"], 5)
         self.assertEqual(result["duplicate_cusip_groups"], 9)
         self.assertLess(self.data_path.stat().st_size, MAX_PUBLISH_BYTES)

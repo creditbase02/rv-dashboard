@@ -22,7 +22,8 @@ concurrency:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    # Match the OS supported by the pinned Playwright version.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -167,7 +168,13 @@ jobs:
         run: |
           python3 -m http.server 8766 --directory public &
           server_pid=$!
-          trap 'kill "$server_pid"' EXIT
+          python3 bql-test-site/build.py
+          python3 -m http.server 8767 --bind 127.0.0.1 --directory bql-test-site/dist &
+          lab_pid=$!
+          trap 'kill "$server_pid" "$lab_pid"' EXIT
+          pnpm run test:bql -- http://127.0.0.1:8766/
+          pnpm run test:bql-lab -- http://127.0.0.1:8767/
+          pnpm run test:bql-lab -- http://127.0.0.1:8766/bql.html
           pnpm run test:browser -- http://127.0.0.1:8766/
       - uses: actions/upload-pages-artifact@v4
         if: >-

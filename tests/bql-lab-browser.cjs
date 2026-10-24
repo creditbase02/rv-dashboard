@@ -1,0 +1,68 @@
+const assert=require('node:assert/strict');
+const {chromium}=require('playwright');
+const {readFileSync}=require('node:fs');
+const base=process.argv.slice(2).find(arg=>arg!=='--')||'http://127.0.0.1:8767/';
+const current=JSON.parse(readFileSync('assets/luac-bonds.json','utf8'));
+const data={...current,records:current.records.slice(0,80)};
+const anomalous=data.records[0];anomalous[8]=0;anomalous[10]=['yield_outlier'];
+const token='b'.repeat(64);
+(async()=>{
+ const browser=await chromium.launch();
+ try{
+  for(const width of [1440,768,375]){
+   const context=await browser.newContext({viewport:{width,height:1000}});
+   const page=await context.newPage();const errors=[];const requests=[];let previewCount=0;
+   page.on('pageerror',error=>errors.push(error.message));
+   await context.route('http://127.0.0.1:8768/**',async route=>{
+    const request=route.request();const path=new URL(request.url()).pathname;
+    const headers={'Access-Control-Allow-Origin':new URL(base).origin,'Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, POST, OPTIONS'};
+    if(request.method()==='OPTIONS')return route.fulfill({status:204,headers});
+    assert.equal(request.headers().authorization,`Bearer ${token}`);
+    requests.push(path);
+    if(path==='/health')return route.fulfill({headers,json:{ready:true,preview_enabled:true}});
+    assert.equal(path,'/preview');assert.deepEqual(request.postDataJSON(),{});previewCount++;
+    if(previewCount===2)return route.fulfill({headers,json:{ok:false,error_class:'query_timeout'}});
+    await new Promise(resolve=>setTimeout(resolve,200));
+    return route.fulfill({headers,json:{ok:true,validation:'schema_only',comparison:'not_verified',data}});
+   });
+   await page.goto(`${base}#bbg-token=${token}`);
+   await page.locator('#connection-badge.connected').waitFor();
+   assert.equal(previewCount,0,'page load must not query market data');
+   assert.equal(await page.locator('#explorer').isVisible(),false);
+   await page.locator('#fetch-snapshot').click();
+   assert.equal(await page.locator('#fetch-snapshot').isDisabled(),true);
+   await page.locator('#lab-status.success').waitFor();
+   assert.equal(previewCount,1);
+   assert.equal(await page.locator('#lab-count').innerText(),'80');
+   assert.equal(await page.locator('#lab-anomalies').innerText(),'1');
+   assert.equal(await page.locator('#show-outliers').isChecked(),false);
+   assert.ok(await page.locator('#bond-rows tr').count()>0);
+   await page.locator('[name=bond-metric][value=oas_bp]').check();
+   assert.match(await page.locator('#chart-title').innerText(),/OAS/);
+   await page.locator('[name=industry-dimension][value=peer_group]').check();
+   assert.equal(await page.locator('#industry-filter-title').innerText(),'Peer Group');
+   await page.locator('#reset-filters').click();
+   await page.locator('#bond-search').fill('no_matching_security_123');
+   await page.waitForTimeout(150);assert.equal(await page.locator('#bond-rows tr[data-bond-id]').count(),0);
+   await page.locator('#bond-search').fill('');
+   const date=await page.locator('#lab-date').innerText();
+   await page.locator('#fetch-snapshot').click();
+   await page.locator('#lab-status.warning').waitFor();
+   assert.match(await page.locator('#lab-status').innerText(),/保留上一份/);
+   assert.equal(await page.locator('#lab-date').innerText(),date);
+   assert.equal(await page.locator('#lab-count').innerText(),'80');
+   await page.waitForTimeout(250);assert.equal(previewCount,2,'failure must not retry');
+   assert.equal(requests.some(path=>path.includes('publish')),false);
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}: horizontal overflow`);
+   assert.deepEqual(errors,[]);
+   await context.close();
+  }
+  const page=await browser.newPage();let preview=0;
+  page.on('request',request=>{if(new URL(request.url()).pathname==='/preview')preview++;});
+  await page.goto(base);
+  await page.locator('#lab-status.warning').waitFor();
+  assert.equal(await page.locator('#fetch-snapshot').isDisabled(),true);
+  assert.equal(preview,0);
+  console.log('BQL lab UI PASS: desktop/tablet/mobile, one query per click, filters, failure retention, no retries or publishing.');
+ }finally{await browser.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});

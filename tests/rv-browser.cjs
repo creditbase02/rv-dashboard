@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const {execFileSync} = require('node:child_process');
+const PYTHON = process.platform === 'win32' ? 'python' : 'python3';
 const {mkdtempSync,readFileSync,rmSync,writeFileSync} = require('node:fs');
 const {tmpdir} = require('node:os');
 const {join} = require('node:path');
@@ -333,8 +334,8 @@ async function runSupply(browser,base,width=1440){
   assert.match(await page.locator('.forecast-table').innerText(),/\$330Bn/);
   if(width===375)assert.equal(await page.locator('.forecast-table-wrap').evaluate(node=>node.scrollWidth>node.clientWidth),true);
   await page.locator('#ytd-forecast-comparison:not([hidden])').waitFor();
-  assert.equal(await page.locator('#ytd-forecast-comparison').innerText(),'BofA 2026E $2.1Tn · 已達 80%');
-  if(supplyMonth===9)assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),'BofA 9月E $190Bn · 已達 103%');
+  assert.equal(await page.locator('#ytd-forecast-comparison').innerText(),`BofA 2026E $2.1Tn · 已達 ${Math.round(data.ytd_usd/2.1e12*100)}%`);
+  if(supplyMonth===9)assert.equal(await page.locator('#mtd-forecast-comparison').innerText(),`BofA 9月E $190Bn · 已達 ${Math.round(data.mtd_usd/190e9*100)}%`);
   else assert.equal(await page.locator('#mtd-forecast-comparison').isHidden(),true);
 
   const industryName=data.breakdowns.industry[0][0],industryTop=Object.fromEntries(data.top_tickers.ytd.industry)[industryName];
@@ -516,7 +517,7 @@ const FILES = {
 
 function fixtures(root,variant,date) {
   const output=join(root,variant);
-  execFileSync('python3',['tests/make_xlsx_fixtures.py','--out',output,'--variant',variant,'--date',date],{stdio:'pipe'});
+  execFileSync(PYTHON,['tests/make_xlsx_fixtures.py','--out',output,'--variant',variant,'--date',date],{stdio:'pipe'});
   return Object.fromEntries(Object.entries(FILES).map(([metric,name])=>[metric,join(output,name)]));
 }
 
@@ -550,7 +551,7 @@ async function openUploader(browser,base,expectedDate,width=1440,currentLuacDate
 
 function supplyFixture(root,variant='valid'){
   const output=join(root,`supply-${variant}`);
-  execFileSync('python3',['tests/make_supply_fixture.py','--out',output,'--variant',variant],{stdio:'pipe'});
+  execFileSync(PYTHON,['tests/make_supply_fixture.py','--out',output,'--variant',variant],{stdio:'pipe'});
   const workbook=join(output,'supply.xlsx'),peers=join(output,'peers.xlsx');
   const snapshot=['valid','pending-id','cusip-only-locked'].includes(variant)?JSON.parse(readFileSync('assets/supply-data.json','utf8')):null;
   return {workbook,peers,snapshot};
@@ -638,7 +639,7 @@ async function runInvalidUpload(browser,base,files,expected,currentDate) {
 
 function luacFixture(root,variant,date,count=40){
   const base=join(root,`luac-${variant}-${count}-${date}`);
-  execFileSync('python3',['tests/make_luac_fixture.py','--out',`${base}.xlsx`,'--peers-out',`${base}-peers.xlsx`,'--variant',variant,'--date',date,'--count',String(count)],{stdio:'pipe'});
+  execFileSync(PYTHON,['tests/make_luac_fixture.py','--out',`${base}.xlsx`,'--peers-out',`${base}-peers.xlsx`,'--variant',variant,'--date',date,'--count',String(count)],{stdio:'pipe'});
   return {workbook:`${base}.xlsx`,peers:`${base}-peers.xlsx`};
 }
 
@@ -664,7 +665,7 @@ async function runValidLuacUpload(browser,base,width,fixture,expectedDate,curren
   assert.equal(JSON.parse(publish.body).data.date,expectedDate);
   assert.deepEqual(JSON.parse(publish.body).data.peer_definitions,[{name:'Fixture Banks',tickers:['T0','T1']},{name:'Fixture Tech',tickers:['T2','T3']}]);
   const pythonArgs=['scripts/extract_luac.py',fixture.workbook,'--peers',fixture.peers];if(combined)pythonArgs.push('--date',expectedDate);
-  const python=JSON.parse(execFileSync('python3',pythonArgs,{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
+  const python=JSON.parse(execFileSync(PYTHON,pythonArgs,{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
   assert.deepEqual(JSON.parse(publish.body).data,python,'browser and Python LUAC extraction must match');
   await context.close();
 }
@@ -701,6 +702,8 @@ async function runBloombergDiagnostic(browser,base,fixture,currentDate){
   const {context,page,requests,bridgeRequests}=await openUploader(browser,base,currentDate,1440,currentDate,40,true);
   await page.locator('#bloomberg-diagnostic').waitFor({state:'visible'});
   await page.locator('#luac-file').setInputFiles(fixture.workbook);await page.locator('#peer-group-file').setInputFiles(fixture.peers);await page.locator('#validate-luac').click();await page.locator('#luac-validation-status.success').waitFor();await page.locator('#bql-confirm').check();
+  assert.equal(await page.locator('#probe-bloomberg').isDisabled(),true);
+  await page.locator('#bloomberg-session-confirm').check();
   await page.locator('#probe-bloomberg').click();await page.locator('#bloomberg-status.success').waitFor();
   const probe=bridgeRequests.find(item=>item.url.endsWith('/probe'));assert.ok(probe);assert.deepEqual(Object.keys(JSON.parse(probe.body)),['data']);assert.equal(/\.xlsx|source_file|sha256|\/Users\//i.test(probe.body),false);
   assert.equal(requests.some(item=>item.url.endsWith('/publish/luac')),false,'diagnostic must not call the Worker publish endpoint');

@@ -1,286 +1,218 @@
-#!/usr/bin/env python3
-"""Read-only Bloomberg Desktop API feasibility probe for the LUAC bond universe.
-
-Run this only in Windows Terminal on a company computer with Bloomberg Terminal
-already signed in. Standard output contains aggregate diagnostics, never raw rows.
-"""
-
+"""Read-only BQL worker. No ReferenceData fallback or snapshot publication."""
 from __future__ import annotations
-
 import argparse
+import contextlib
+import importlib.util
+import io
 import json
-import math
+import re
+import socket
 import sys
 from datetime import date, datetime
 from pathlib import Path
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from luac_data import COLUMNS, SCHEMA_VERSION, quality_flags, validate_luac
-from peer_data import parse_peer_definitions
 
+UNIVERSE = "intersect(bondsuniv('active',CONSOLIDATEDUPLICATES='N'),members(['LUACTRUU Index']))"
 FIELDS = {
-    "security_des": "SECURITY_DES",
-    "issuer": "LONG_COMP_NAME",
-    "ticker": "TICKER",
-    "maturity": "MATURITY",
-    "rating": "BB_COMPOSITE",
-    "maturity_years": "MTY_YEARS_TDY",
-    "oas_bp": "OAS_SPREAD_BID",
-    "yield_pct": "YLD_YTM_BID",
-    "industry": "BICS_LEVEL_1_SECTOR_NAME",
+    'security_des': 'SECURITY_DES()', 'issuer': 'LONG_COMP_NAME()',
+    'ticker': 'TICKER()', 'maturity': 'MATURITY()', 'rating': 'BB_COMPOSITE()',
+    'maturity_years': 'MTY_YEARS_TDY()',
+    'oas_bp': "SPREAD(ST='OAS',PRICING_SOURCE=BVAL,SIDE=BID)",
+    'yield_pct': 'YIELD(YT=CONVENTION,PRICING_SOURCE=BVAL,SIDE=BID)',
+    'industry': 'CLASSIFICATION_NAME(BICS,1,TYPE=ISSUER)',
 }
+class ProbeError(Exception):
+    pass
 
-
-def classify(error: BaseException) -> str:
-    name = type(error).__name__.lower()
+def classify(error):
+    if isinstance(error, ProbeError): return str(error)
+    if isinstance(error, TimeoutError): return 'query_timeout'
+    if isinstance(error, ImportError): return 'bql_runtime_unavailable'
     message = str(error).lower()
-    if "import" in name or "module" in message:
-        return "dependency_unavailable"
-    if "start" in message or "connect" in message or "session" in message:
-        return "terminal_connection"
-    if "authorization" in message or "permission" in message:
-        return "not_authorized"
-    if "field" in message:
-        return "field_error"
-    return "api_error"
+    if any(w in message for w in ('permission', 'authorization', 'entitlement', 'not authorized')): return 'not_authorized'
+    if any(w in message for w in ('connect', 'session', 'login', 'log in')): return 'terminal_connection'
+    return 'bql_query_failed'
 
+def health(provider='bql'):
+    modules = ('polars_bloomberg','blpapi') if provider == 'polars-bloomberg' else ('bql',)
+    available = all(importlib.util.find_spec(module) is not None for module in modules)
+    with socket.socket() as connection:
+        connection.settimeout(1)
+        try: terminal = connection.connect_ex(('127.0.0.1',8194)) == 0
+        except OSError: terminal = False
+    return {'ready': available, 'provider':provider, 'bql_available': available, 'terminal_port_open': terminal,
+            'entitlement_verified': False, 'error_class': None if available else 'bql_runtime_unavailable'}
 
-def scalar(element):
-    value = element.getValue()
-    if isinstance(value, (datetime, date)):
-        return value.date().isoformat() if isinstance(value, datetime) else value.isoformat()
-    if isinstance(value, (int, float)):
-        if not math.isfinite(value):
-            raise ValueError("non-finite Bloomberg value")
-        return value
-    return str(value).strip()
+def query_text(security=None):
+    universe = UNIVERSE
+    if security is not None:
+        if not isinstance(security,str) or not re.fullmatch(r'[A-Za-z0-9 /_.:@+\-]{1,64}',security):
+            raise ProbeError('invalid_security_id')
+        universe = "['" + security + "']"
+    definitions = ';'.join(f'#{name}={expression}' for name,expression in FIELDS.items())
+    return f"let({definitions};) get({','.join('#'+name for name in FIELDS)}) for({universe})"
 
+def iso_date(value):
+    if isinstance(value,datetime): value=value.date()
+    if isinstance(value,date): return value.isoformat()
+    if isinstance(value,str):
+        try: return date.fromisoformat(value).isoformat()
+        except ValueError: pass
+    raise ProbeError('market_date_unverified')
 
-def reference_request(blpapi, session, securities: list[str], fields: list[str]) -> dict[str, dict[str, object]]:
-    service = session.getService("//blp/refdata")
-    request = service.createRequest("ReferenceDataRequest")
-    for security in securities:
-        request.append("securities", security)
-    for field in fields:
-        request.append("fields", field)
-    session.sendRequest(request)
-    result: dict[str, dict[str, object]] = {}
-    while True:
-        event = session.nextEvent(30_000)
-        if event.eventType() == blpapi.Event.TIMEOUT:
-            raise TimeoutError("Bloomberg request timed out")
-        for message in event:
-            if message.hasElement("responseError"):
-                raise RuntimeError("Bloomberg response error")
-            if not message.hasElement("securityData"):
-                continue
-            security_data = message.getElement("securityData")
-            for index in range(security_data.numValues()):
-                item = security_data.getValueAsElement(index)
-                identifier = item.getElementAsString("security")
-                if item.hasElement("securityError"):
-                    result[identifier] = {"_error": "security_error"}
-                    continue
-                values: dict[str, object] = {}
-                field_data = item.getElement("fieldData")
-                for field in fields:
-                    if field_data.hasElement(field):
-                        values[field] = scalar(field_data.getElement(field))
-                if item.hasElement("fieldExceptions") and item.getElement("fieldExceptions").numValues():
-                    values["_field_error"] = True
-                result[identifier] = values
-        if event.eventType() == blpapi.Event.RESPONSE:
-            return result
+def read_response(response):
+    # DATE must be returned on both market items; never infer it from a clock or Excel date.
+    records, dates, seen = {}, set(), set()
+    for item in response:
+        frame=item.df().reset_index() if hasattr(item,'df') else item
+        columns={str(c).lower():c for c in frame.columns}
+        aliases=[name for name in FIELDS if '#'+name in columns]
+        if len(aliases)!=1 or 'id' not in columns: raise ProbeError('bql_response_shape')
+        name=aliases[0]
+        if name in seen: raise ProbeError('duplicate_field')
+        seen.add(name)
+        ids=set()
+        rows=frame.to_dicts() if hasattr(frame,'to_dicts') else frame.to_dict('records')
+        for row in rows:
+            identifier=row[columns['id']]
+            if not isinstance(identifier,str) or not identifier.strip(): raise ProbeError('invalid_security_id')
+            if identifier in ids: raise ProbeError('duplicate_id')
+            ids.add(identifier)
+            value=row[columns['#'+name]]
+            if value is None or (isinstance(value,str) and not value.strip()): raise ProbeError('missing_fields')
+            if name=='maturity': value=iso_date(value)
+            records.setdefault(identifier,{})[name]=value
+            if name in ('oas_bp','yield_pct'):
+                if 'date' not in columns: raise ProbeError('market_date_unverified')
+                dates.add(iso_date(row[columns['date']]))
+    if seen!=set(FIELDS) or not records or any(set(row)!=set(FIELDS) for row in records.values()):
+        raise ProbeError('partial_response')
+    if len(dates)!=1: raise ProbeError('mixed_market_dates')
+    return records, dates.pop()
 
+def snapshot(records, as_of, peer_definitions):
+    rows=[]
+    for identifier,v in records.items():
+        if set(v)!=set(FIELDS): raise ProbeError('missing_fields')
+        years,oas,yld=(v[k] for k in ('maturity_years','oas_bp','yield_pct'))
+        rows.append([identifier,v['security_des'],v['issuer'],v['ticker'],v['maturity'],v['rating'],
+                     years,oas,yld,v['industry'],quality_flags(years,oas,yld)])
+    result={'schema_version':SCHEMA_VERSION,'date':as_of,'columns':list(COLUMNS),
+            'peer_definitions':peer_definitions,'records':rows}
+    try: validate_luac(result)
+    except (ValueError,TypeError): raise ProbeError('invalid_snapshot') from None
+    return result
 
-def universe_members(blpapi, session, universe: str, field: str) -> list[str]:
-    # Bulk fields need direct element traversal, which is intentionally isolated here.
-    service = session.getService("//blp/refdata")
-    request = service.createRequest("ReferenceDataRequest")
-    request.append("securities", universe)
-    request.append("fields", field)
-    session.sendRequest(request)
-    members: list[str] = []
-    while True:
-        event = session.nextEvent(30_000)
-        if event.eventType() == blpapi.Event.TIMEOUT:
-            raise TimeoutError("Bloomberg universe request timed out")
-        for message in event:
-            if not message.hasElement("securityData"):
-                continue
-            items = message.getElement("securityData")
-            for item_index in range(items.numValues()):
-                data = items.getValueAsElement(item_index).getElement("fieldData")
-                if not data.hasElement(field):
-                    continue
-                bulk = data.getElement(field)
-                for row_index in range(bulk.numValues()):
-                    row = bulk.getValueAsElement(row_index)
-                    for column_index in range(row.numElements()):
-                        column = row.getElement(column_index)
-                        name = str(column.name()).lower()
-                        if "member" in name and ("ticker" in name or "security" in name):
-                            value = str(column.getValue()).strip()
-                            if value:
-                                members.append(value)
-                            break
-        if event.eventType() == blpapi.Event.RESPONSE:
-            break
-    return members
+def compare(candidate, baseline):
+    validate_luac(candidate)
+    validate_luac(baseline)
+    new={r[0]:r for r in candidate['records']}; old={r[0]:r for r in baseline['records']}
+    ids_match=set(new)==set(old); common=set(new)&set(old)
+    max_oas=max((abs(new[k][7]-old[k][7]) for k in common),default=None)
+    max_yield=max((abs(new[k][8]-old[k][8]) for k in common),default=None)
+    static=sum(any(new[k][i]!=old[k][i] for i in (1,2,3,4,5)) for k in common)
+    industry=sum(new[k][9]!=old[k][9] for k in common)
+    dates=candidate['date']==baseline['date']
+    oas_ok=max_oas is not None and max_oas<=0.5
+    yield_ok=max_yield is not None and max_yield<=0.01
+    return {'ids_match':ids_match,'date_match':dates,'industry_match':ids_match and industry==0,
+            'static_mismatch_count':static,'industry_mismatch_count':industry,
+            'max_oas_diff_bp':max_oas,'max_yield_diff_pct':max_yield,
+            'oas_within_0_5_bp':oas_ok,'yield_within_0_01_pct_point':yield_ok,
+            'eligible_for_api_planning':ids_match and dates and static==0 and industry==0 and oas_ok and yield_ok}
 
+def run_probe(baseline, service_factory=None, provider='bql'):
+    d={'connected':False,'reference_ok':False,'universe_ok':False,'count':0,
+       'required_field_coverage_pct':0,'passed':False,'error_class':None}
+    manager = None
+    entered = False
+    try:
+        validate_luac(baseline)
+        if service_factory is None:
+            if provider == 'polars-bloomberg':
+                from polars_bloomberg import BQuery
+                manager=BQuery(host='127.0.0.1',port=8194,timeout=120000,debug=False)
+                manager.__enter__()
+                entered=True
+                service=manager
+            else:
+                import bql
+                service=bql.Service()
+        else:
+            service=service_factory()
+        execute=service.bql if provider == 'polars-bloomberg' else service.execute
+        d['connected']=True
+        known=baseline['records'][0][0]
+        single,single_date=read_response(execute(query_text(known)))
+        if set(single)!={known}: raise ProbeError('single_security_mismatch')
+        snapshot(single,single_date,baseline['peer_definitions']); d['reference_ok']=True
+        records,market_date=read_response(execute(query_text()))
+        if single_date!=market_date: raise ProbeError('mixed_market_dates')
+        candidate=snapshot(records,market_date,baseline['peer_definitions'])
+        d.update(universe_ok=True,count=len(records),required_field_coverage_pct=100)
+        comparison=compare(candidate,baseline); d.update(comparison)
+        d['passed']=comparison['eligible_for_api_planning']
+        if not d['passed']: d['error_class']='comparison_failed'
+    except Exception as error: d['error_class']=classify(error)
+    finally:
+        if entered:
+            try: manager.__exit__(None,None,None)
+            except Exception:
+                d['passed']=False
+                d['error_class']='bql_query_failed'
+    return d
 
-def resolve_bics_level1_field(blpapi, session) -> str:
-    """Verify the exact BICS Level 1 field through Bloomberg field metadata."""
-    if not session.openService("//blp/apiflds"):
-        raise ConnectionError("Bloomberg field metadata service failed to open")
-    service = session.getService("//blp/apiflds")
-    request = service.createRequest("FieldSearchRequest")
-    request.set("searchSpec", "BICS Level 1 Sector Name")
-    request.set("returnFieldDocumentation", False)
-    session.sendRequest(request)
-    matches: set[str] = set()
-    while True:
-        event = session.nextEvent(30_000)
-        if event.eventType() == blpapi.Event.TIMEOUT:
-            raise TimeoutError("Bloomberg field metadata request timed out")
-        for message in event:
-            if message.hasElement("responseError"):
-                raise RuntimeError("Bloomberg field metadata response error")
-            if not message.hasElement("fieldData"):
-                continue
-            data = message.getElement("fieldData")
-            for index in range(data.numValues()):
-                item = data.getValueAsElement(index)
-                info = item.getElement("fieldInfo") if item.hasElement("fieldInfo") else item
-                for name in ("id", "mnemonic"):
-                    if info.hasElement(name):
-                        value = info.getElementAsString(name).strip()
-                        if value == FIELDS["industry"]:
-                            matches.add(value)
-        if event.eventType() == blpapi.Event.RESPONSE:
-            break
-    if matches != {FIELDS["industry"]}:
-        raise ValueError("BICS Level 1 field metadata did not resolve uniquely")
-    return matches.pop()
-
-
-def snapshot(records: dict[str, dict[str, object]], as_of: str, peer_definitions: list[dict[str, object]]) -> dict:
-    rows = []
-    for identifier, values in records.items():
-        required = [values.get(field) for field in FIELDS.values()]
-        if any(value in (None, "") for value in required):
-            continue
-        years = float(values[FIELDS["maturity_years"]])
-        oas = float(values[FIELDS["oas_bp"]])
-        bond_yield = float(values[FIELDS["yield_pct"]])
-        rows.append([
-            identifier,
-            str(values[FIELDS["security_des"]]),
-            str(values[FIELDS["issuer"]]),
-            str(values[FIELDS["ticker"]]),
-            str(values[FIELDS["maturity"]])[:10],
-            str(values[FIELDS["rating"]]),
-            years,
-            oas,
-            bond_yield,
-            str(values[FIELDS["industry"]]),
-            quality_flags(years, oas, bond_yield),
-        ])
-    result = {
-        "schema_version": SCHEMA_VERSION,
-        "date": as_of,
-        "columns": list(COLUMNS),
-        "peer_definitions": peer_definitions,
-        "records": rows,
-    }
-    validate_luac(result)
+def run_preview(peer_definitions, service_factory=None, provider='bql'):
+    """One full query, validated for local preview only; never an approval."""
+    manager = None
+    entered = False
+    try:
+        if service_factory is not None:
+            service = service_factory()
+        elif provider == 'polars-bloomberg':
+            from polars_bloomberg import BQuery
+            manager = BQuery(host='127.0.0.1', port=8194, timeout=120000, debug=False)
+            manager.__enter__()
+            entered = True
+            service = manager
+        else:
+            import bql
+            service = bql.Service()
+        execute = service.bql if provider == 'polars-bloomberg' else service.execute
+        records, market_date = read_response(execute(query_text()))
+        data = snapshot(records, market_date, peer_definitions)
+        if len(json.dumps(data, ensure_ascii=False).encode('utf-8')) > 4 * 1024 * 1024:
+            raise ProbeError('snapshot_too_large')
+        result = {'ok': True, 'validation': 'schema_only', 'comparison': 'not_verified', 'data': data}
+    except Exception as error:
+        result = {'ok': False, 'error_class': classify(error)}
+    finally:
+        if entered:
+            try:
+                manager.__exit__(None, None, None)
+            except Exception:
+                result = {'ok': False, 'error_class': 'bql_query_failed'}
     return result
 
 
-def compare(candidate: dict, baseline: dict) -> dict[str, object]:
-    validate_luac(candidate)
-    validate_luac(baseline)
-    new = {row[0]: row for row in candidate["records"]}
-    old = {row[0]: row for row in baseline["records"]}
-    ids_match = set(new) == set(old)
-    common = set(new) & set(old)
-    max_oas = max((abs(new[key][7] - old[key][7]) for key in common), default=None)
-    max_yield = max((abs(new[key][8] - old[key][8]) for key in common), default=None)
-    static_indexes=(1,2,3,4,5)
-    static_mismatches=sum(any(new[key][index]!=old[key][index] for index in static_indexes) for key in common)
-    industry_mismatches=sum(new[key][9]!=old[key][9] for key in common)
-    return {
-        "ids_match": ids_match,
-        "industry_match": ids_match and industry_mismatches == 0,
-        "static_mismatch_count": static_mismatches,
-        "industry_mismatch_count": industry_mismatches,
-        "max_oas_diff_bp": max_oas,
-        "max_yield_diff_pct": max_yield,
-        "oas_within_0_5_bp": max_oas is not None and max_oas <= 0.5,
-        "yield_within_0_01_pct_point": max_yield is not None and max_yield <= 0.01,
-        "eligible_for_api_planning": ids_match and industry_mismatches == 0 and max_oas is not None and max_oas <= 0.5 and max_yield is not None and max_yield <= 0.01,
-    }
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--known-security", required=True, help="One Bloomberg security identifier already present in the approved workbook")
-    parser.add_argument("--universe", default="LUACTRUU Index")
-    parser.add_argument("--universe-field", default="INDX_MEMBERS")
-    parser.add_argument("--as-of", default=date.today().isoformat())
-    parser.add_argument("--snapshot-output", type=Path, help="Optional sanitized contract output; must be outside this repository")
-    parser.add_argument("--compare", type=Path, help="Optional sanitized Excel JSON from the same session")
-    parser.add_argument("--peers", type=Path, help="Optional Peer Group workbook; defaults to the mapping inside --compare")
-    args = parser.parse_args()
-    diagnostic: dict[str, object] = {"connected": False, "reference_ok": False, "universe_ok": False, "count": 0, "required_field_coverage_pct": 0, "error_class": None}
-    session = None
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--health',action='store_true'); p.add_argument('--stdin',action='store_true')
+    p.add_argument('--preview',action='store_true')
+    p.add_argument('--provider',choices=('bql','polars-bloomberg'),default='bql')
+    a=p.parse_args()
+    if sum((a.health,a.stdin,a.preview))!=1: p.error('choose one of --health, --stdin or --preview')
     try:
-        import blpapi
-
-        options = blpapi.SessionOptions()
-        options.setServerHost("localhost")
-        options.setServerPort(8194)
-        session = blpapi.Session(options)
-        if not session.start() or not session.openService("//blp/refdata"):
-            raise ConnectionError("Bloomberg Desktop API session failed to start")
-        diagnostic["connected"] = True
-        resolve_bics_level1_field(blpapi, session)
-        one = reference_request(blpapi, session, [args.known_security], list(FIELDS.values()))
-        one_values = one.get(args.known_security, {})
-        diagnostic["reference_ok"] = all(field in one_values for field in FIELDS.values())
-        raw_members = universe_members(blpapi, session, args.universe, args.universe_field)
-        diagnostic["universe_ok"] = bool(raw_members) and len(raw_members) == len(set(raw_members))
-        members = list(dict.fromkeys(raw_members))
-        diagnostic["count"] = len(members)
-        records: dict[str, dict[str, object]] = {}
-        for offset in range(0, len(members), 250):
-            records.update(reference_request(blpapi, session, members[offset:offset + 250], list(FIELDS.values())))
-        total = len(members) * len(FIELDS)
-        present = sum(field in values for values in records.values() for field in FIELDS.values())
-        diagnostic["required_field_coverage_pct"] = round(100 * present / total, 4) if total else 0
-        if args.snapshot_output:
-            if diagnostic["required_field_coverage_pct"] != 100 or len(records) != len(members):
-                raise ValueError("required field coverage is incomplete")
-            output = args.snapshot_output.resolve()
-            if output.is_relative_to(ROOT):
-                parser.error("Bloomberg snapshot output must be outside the repository")
-            baseline = json.loads(args.compare.read_text(encoding="utf-8")) if args.compare else {}
-            definitions = parse_peer_definitions(args.peers) if args.peers else baseline.get("peer_definitions")
-            if not definitions:
-                raise ValueError("Peer Group mapping is required; pass --peers or --compare")
-            candidate = snapshot(records, args.as_of, definitions)
-            output.write_text(json.dumps(candidate, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
-            if args.compare:
-                diagnostic["comparison"] = compare(candidate, baseline)
-    except Exception as error:
-        diagnostic["error_class"] = classify(error)
-    finally:
-        if session is not None:
-            session.stop()
-    print(json.dumps(diagnostic, separators=(",", ":")))
-    return 0 if not diagnostic["error_class"] else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+        # Vendor output may contain private identifiers. Never forward SDK logs.
+        with contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+            if a.health:
+                result = health(a.provider)
+            elif a.preview:
+                result = run_preview(json.load(sys.stdin)['peer_definitions'],provider=a.provider)
+            else:
+                result = run_probe(json.load(sys.stdin),provider=a.provider)
+    except Exception as error: result={'ready':False,'passed':False,'error_class':classify(error)}
+    print(json.dumps(result,allow_nan=False,separators=(',',':')))
+if __name__=='__main__': main()
