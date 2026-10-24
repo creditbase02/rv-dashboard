@@ -13,19 +13,38 @@ ROOT = Path(__file__).resolve().parents[1]
 SITE = 'https://creditbase02.github.io/rv-dashboard/bql.html'
 
 
+def bundle_peer_mapping():
+    """Fetch public classifications once; never fetch a quote snapshot."""
+    sys.path.insert(0, str(ROOT))
+    from peer_data import validate_peer_definitions
+    with urllib.request.urlopen('https://creditbase02.github.io/rv-dashboard/assets/luac-peer-definitions.json', timeout=25) as response:
+        raw = response.read(256 * 1024 + 1)
+    if len(raw) > 256 * 1024:
+        raise ValueError('Peer mapping exceeds size limit')
+    definitions = json.loads(raw)
+    validate_peer_definitions(definitions)
+    path = ROOT / 'assets/peer-definitions.json'
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps(definitions, ensure_ascii=False), encoding='utf-8')
+    return path
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--bql-python', type=Path, default=ROOT / '.venv-bql/Scripts/python.exe')
     parser.add_argument('--provider', choices=('bql', 'polars-bloomberg'), default='polars-bloomberg')
     args = parser.parse_args()
     if not args.bql_python.is_file():
-        parser.error('BQL Python is missing; follow BQL_DIAGNOSTICS.md setup first')
+        parser.error('BQL Python is missing. Run Setup.cmd first, then Start.cmd.')
+    mapping_args = []
+    if (ROOT / 'standalone-launcher.txt').is_file():
+        mapping_args = ['--peer-definitions', str(bundle_peer_mapping())]
     token = secrets.token_hex(32)
     bridge = subprocess.Popen([
         sys.executable, str(ROOT/'scripts/bloomberg_bridge.py'), '--token', token,
         '--bql-python', str(args.bql_python.resolve()), '--provider', args.provider,
         '--supported-runtime-confirmed', '--enable-preview',
-    ], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    ] + mapping_args, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     try:
         time.sleep(1)

@@ -84,6 +84,8 @@ def validate_public(output: Path) -> None:
         output / "bql.html",
         output / "assets" / "bql-viewer.js",
         output / "assets" / "lab.js",
+        output / "downloads" / "RV-BQL-Launcher.zip",
+        output / "assets" / "luac-peer-definitions.json",
         output / "supply.html",
         output / "integration-manifest.json",
     )
@@ -146,6 +148,9 @@ def build() -> tuple[Path, dict]:
         (temporary / "supply.html").write_text(supply_page, encoding="utf-8")
         import runpy
         runpy.run_path(str(ROOT / 'bql-test-site/build.py'))['build'](temporary, production=True)
+        from scripts.build_bql_launcher import build as build_bql_launcher
+        build_bql_launcher(temporary/'downloads/RV-BQL-Launcher.zip')
+        (assets/'luac-peer-definitions.json').write_text(json.dumps(luac['peer_definitions'],ensure_ascii=False),encoding='utf-8')
         (temporary / ".nojekyll").write_text("", encoding="utf-8")
         manifest = {
             "schema_version": 1,

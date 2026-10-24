@@ -61,8 +61,16 @@ const token='b'.repeat(64);
   page.on('request',request=>{if(new URL(request.url()).pathname==='/preview')preview++;});
   await page.goto(base);
   await page.locator('#lab-status.warning').waitFor();
+  assert.equal(await page.locator('#download-launcher').isVisible(),true);
+  assert.match(await page.locator('#download-launcher').getAttribute('href'),/\/downloads\/RV-BQL-Launcher\.zip(?:\?v=[a-f0-9]+)?$/);
+  assert.match(await page.locator('#connection-setup').innerText(),/Setup.cmd/);
   assert.equal(await page.locator('#fetch-snapshot').isDisabled(),true);
   assert.equal(preview,0);
+  await page.route('http://127.0.0.1:8768/health',route=>route.fulfill({json:{ready:true,preview_enabled:true}}));
+  await page.evaluate(value=>{location.hash=`bbg-token=${value}`;},token);
+  await page.locator('#connection-badge.connected').waitFor();
+  assert.equal(await page.locator('#fetch-snapshot').isEnabled(),true);
+  assert.equal(preview,0,'fragment updates may check health but must not query quotes');
   console.log('BQL lab UI PASS: desktop/tablet/mobile, one query per click, filters, failure retention, no retries or publishing.');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

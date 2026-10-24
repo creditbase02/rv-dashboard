@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from luac_data import validate_luac
+from peer_data import validate_peer_definitions
 MAX_BODY=4*1024*1024
 ALLOWED_ORIGINS={'https://creditbase02.github.io','http://127.0.0.1:8766','http://localhost:8766'}
 PREVIEW_ORIGINS={'https://creditbase02.github.io','http://127.0.0.1:8767','http://localhost:8767'}
@@ -19,6 +20,7 @@ PROVIDER='bql'
 SUPPORTED_RUNTIME_CONFIRMED=False
 PROBE_LOCK=threading.Lock()
 PREVIEW_ENABLED=False
+PEER_DEFINITIONS_PATH=None
 
 def worker(mode,data=None):
     try:
@@ -60,9 +62,14 @@ def run_preview():
     if not PROBE_LOCK.acquire(blocking=False):
         return {'ok':False,'error_class':'probe_busy'}
     try:
-        current=json.loads((ROOT/'assets/luac-bonds.json').read_text(encoding='utf-8'))
-        validate_luac(current)
-        result=worker('--preview',{'peer_definitions':current['peer_definitions']})
+        if PEER_DEFINITIONS_PATH is not None:
+            definitions=json.loads(PEER_DEFINITIONS_PATH.read_text(encoding='utf-8'))
+            validate_peer_definitions(definitions)
+        else:
+            current=json.loads((ROOT/'assets/luac-bonds.json').read_text(encoding='utf-8'))
+            validate_luac(current)
+            definitions=current['peer_definitions']
+        result=worker('--preview',{'peer_definitions':definitions})
         if result.get('ok'):
             validate_luac(result['data'])
             if result.get('validation')!='schema_only' or result.get('comparison')!='not_verified':
@@ -127,17 +134,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500,{'error':'diagnostic_failed'})
 
 def main():
-    global BQL_PYTHON,SUPPORTED_RUNTIME_CONFIRMED,PROVIDER,PREVIEW_ENABLED
+    global BQL_PYTHON,SUPPORTED_RUNTIME_CONFIRMED,PROVIDER,PREVIEW_ENABLED,PEER_DEFINITIONS_PATH
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--token',required=True); p.add_argument('--port',type=int,default=8768)
     p.add_argument('--bql-python',default=sys.executable)
     p.add_argument('--provider',choices=('bql','polars-bloomberg'),default='bql')
     p.add_argument('--supported-runtime-confirmed',action='store_true')
     p.add_argument('--enable-preview',action='store_true',help='Allow token-authenticated read-only preview from the RV site or local lab')
+    p.add_argument('--peer-definitions',type=Path,help='Validated mapping-only file for standalone launcher')
     a=p.parse_args()
     if len(a.token)<32: p.error('token must contain at least 32 characters')
     BQL_PYTHON=a.bql_python; SUPPORTED_RUNTIME_CONFIRMED=a.supported_runtime_confirmed; PROVIDER=a.provider
     PREVIEW_ENABLED=a.enable_preview
+    PEER_DEFINITIONS_PATH=a.peer_definitions
     server=ThreadingHTTPServer(('127.0.0.1',a.port),Handler); server.token=a.token
     print(f'BQL diagnostic bridge: http://127.0.0.1:{a.port}. No publishing endpoints.')
     try: server.serve_forever()

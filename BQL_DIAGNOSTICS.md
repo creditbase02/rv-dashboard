@@ -102,6 +102,14 @@ pnpm run test:bql -- http://127.0.0.1:8766/
 這些測試通過僅證明工具流程，不等同公司 Bloomberg 權限或查詢已通過實測。
 ## 正式站 API 預覽（保留 Excel 更新）
 
+### 一般使用者：從網站下載 Windows 啟動包
+
+正式頁的「啟動這台電腦的 Bloomberg 連線」提供 `downloads/RV-BQL-Launcher.zip`。解壓縮後，首次雙擊 `Setup.cmd`，以 Python 3.12 64-bit 在該資料夾建立隔離環境並安裝固定版本套件；每次登入 Bloomberg 後雙擊 `Start.cmd`，自動開啟帶憑證的網頁。啟動器命令視窗須保持開啟，Ctrl+C 停止服務。公司套件下載限制或缺少 Python 時，網站提供 IT／安裝指引，不修改系統安全政策。
+
+下載包只包含明確允許的啟動及驗證原始碼、中文說明與 CMD 檔，不打包 SDK 二進位檔、Python 執行環境、Excel、行情或憑證。單獨啟動時只下載公開的 `assets/luac-peer-definitions.json`，驗證後交給 bridge；沒有下載完整行情快照。只有使用者按取數按鈕才發 BQL 查詢。網站不能直接啟動未安裝的本機程式，因此不假裝下載按鈕能自動啟動 Bloomberg。
+
+### 維運者：使用 repository 啟動
+
 正式單券頁提供 [BQL API 預覽](https://creditbase02.github.io/rv-dashboard/bql.html) 入口；原有 `update.html` Excel 上傳、驗證及發布流程繼續保留。API 預覽只在頁面記憶體載入 schema v2，不會呼叫 `/publish/luac`、產生 PR 或替換公開快照。Excel 一致性驗收仍未通過，因此目前沒有 API 發布按鈕。
 
 完成下方本機環境安裝後，在已登入 Bloomberg Terminal 的公司電腦執行：

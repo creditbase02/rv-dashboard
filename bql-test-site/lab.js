@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const token = new URLSearchParams(location.hash.slice(1)).get('bbg-token');
+  let token = new URLSearchParams(location.hash.slice(1)).get('bbg-token');
   const button = document.getElementById('fetch-snapshot');
   const check = document.getElementById('check-connection');
   const badge = document.getElementById('connection-badge');
@@ -44,8 +44,10 @@
   }
   async function connection() {
     if (busy) return;
+    token = new URLSearchParams(location.hash.slice(1)).get('bbg-token');
+    if (token) document.querySelector('.lab-brand').href = location.hash;
     ready = false; check.disabled = true; button.disabled = true; badge.classList.remove('connected');
-    if (!token) { badge.textContent = '需要啟動器'; display('warning','請使用 BQL 預覽啟動器開啟此頁，才能連線 Bloomberg。原有 Excel 更新入口仍可使用。'); check.disabled = false; return; }
+    if (!token) { badge.textContent = '尚未啟動連線'; display('warning','請先下載 Windows 啟動包，首次執行 Setup.cmd，再雙擊 Start.cmd。啟動器會自動開啟可連線的頁面；原有 Excel 更新仍可使用。'); check.disabled = false; return; }
     try {
       const result = await request('/health');
       ready = result.ready === true && result.preview_enabled === true;
@@ -78,5 +80,6 @@
     } finally { busy = false; sync(); }
   });
   check.addEventListener('click',connection);
+  window.addEventListener('hashchange',connection);
   connection(); // Environment metadata only. No automatic market query.
 })();
