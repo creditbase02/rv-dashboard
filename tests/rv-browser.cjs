@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const {execFileSync} = require('node:child_process');
+const PYTHON = process.platform === 'win32' ? 'python' : 'python3';
 const {mkdtempSync,readFileSync,rmSync,writeFileSync} = require('node:fs');
 const {tmpdir} = require('node:os');
 const {join} = require('node:path');
@@ -516,7 +517,7 @@ const FILES = {
 
 function fixtures(root,variant,date) {
   const output=join(root,variant);
-  execFileSync('python3',['tests/make_xlsx_fixtures.py','--out',output,'--variant',variant,'--date',date],{stdio:'pipe'});
+  execFileSync(PYTHON,['tests/make_xlsx_fixtures.py','--out',output,'--variant',variant,'--date',date],{stdio:'pipe'});
   return Object.fromEntries(Object.entries(FILES).map(([metric,name])=>[metric,join(output,name)]));
 }
 
@@ -550,7 +551,7 @@ async function openUploader(browser,base,expectedDate,width=1440,currentLuacDate
 
 function supplyFixture(root,variant='valid'){
   const output=join(root,`supply-${variant}`);
-  execFileSync('python3',['tests/make_supply_fixture.py','--out',output,'--variant',variant],{stdio:'pipe'});
+  execFileSync(PYTHON,['tests/make_supply_fixture.py','--out',output,'--variant',variant],{stdio:'pipe'});
   const workbook=join(output,'supply.xlsx'),peers=join(output,'peers.xlsx');
   const snapshot=['valid','pending-id','cusip-only-locked'].includes(variant)?JSON.parse(readFileSync('assets/supply-data.json','utf8')):null;
   return {workbook,peers,snapshot};
@@ -638,7 +639,7 @@ async function runInvalidUpload(browser,base,files,expected,currentDate) {
 
 function luacFixture(root,variant,date,count=40){
   const base=join(root,`luac-${variant}-${count}-${date}`);
-  execFileSync('python3',['tests/make_luac_fixture.py','--out',`${base}.xlsx`,'--peers-out',`${base}-peers.xlsx`,'--variant',variant,'--date',date,'--count',String(count)],{stdio:'pipe'});
+  execFileSync(PYTHON,['tests/make_luac_fixture.py','--out',`${base}.xlsx`,'--peers-out',`${base}-peers.xlsx`,'--variant',variant,'--date',date,'--count',String(count)],{stdio:'pipe'});
   return {workbook:`${base}.xlsx`,peers:`${base}-peers.xlsx`};
 }
 
@@ -664,7 +665,7 @@ async function runValidLuacUpload(browser,base,width,fixture,expectedDate,curren
   assert.equal(JSON.parse(publish.body).data.date,expectedDate);
   assert.deepEqual(JSON.parse(publish.body).data.peer_definitions,[{name:'Fixture Banks',tickers:['T0','T1']},{name:'Fixture Tech',tickers:['T2','T3']}]);
   const pythonArgs=['scripts/extract_luac.py',fixture.workbook,'--peers',fixture.peers];if(combined)pythonArgs.push('--date',expectedDate);
-  const python=JSON.parse(execFileSync('python3',pythonArgs,{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
+  const python=JSON.parse(execFileSync(PYTHON,pythonArgs,{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
   assert.deepEqual(JSON.parse(publish.body).data,python,'browser and Python LUAC extraction must match');
   await context.close();
 }
