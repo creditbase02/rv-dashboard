@@ -1,4 +1,10 @@
 @echo off
+setlocal
+rem Select installed runtimes only, for both Python launchers. Keep settings local.
+set "PYTHON_MANAGER_AUTOMATIC_INSTALL=false"
+set "PYLAUNCHER_ALLOW_INSTALL="
+set "PYLAUNCHER_ALWAYS_INSTALL="
+set "PYLAUNCHER_DRYRUN="
 cd /d "%~dp0"
 if exist ".venv-bql\Scripts\python.exe" (
   ".venv-bql\Scripts\python.exe" setup.py --check-runtime >nul 2>&1

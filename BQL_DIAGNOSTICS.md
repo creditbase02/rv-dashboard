@@ -126,6 +126,8 @@ python scripts/start_bql_preview.py
 
 Windows x64 標準版 CPython 3.12、3.13、3.14 共用既有固定套件版本，不降版取數套件，也不改 BQL 查詢。Setup.cmd 優先沿用啟動包內已建立的相容環境，其次依序檢查 py launcher 的 3.12、3.13、3.14，最後檢查 PATH 的 python／python3；檢查只驗證版本與架構，不安裝套件或查行情。顯示選中的 Python 後，才建立隔離環境並安裝必要套件。
 
+選版期間以 setlocal 暫時關閉新舊 Python launcher 的隱含安裝及 dry-run 設定，結束後還原呼叫者環境；不更改全域設定。此處依據 [Python Windows 啟動器文件](https://docs.python.org/3/using/windows.html#install-on-demand) 與 Python install manager 的 automatic_install 設定。
+
 現有環境不相容時停止，請解壓縮到新資料夾再設定；不刪除或改寫原有環境。3.11 以下不支援目前 polars-bloomberg 0.6.0 的 Requires-Python >=3.12；不接受 32-bit、ARM64 原生版、PyPy 或 free-threaded Python。依據：[PyPI metadata](https://pypi.org/pypi/polars-bloomberg/0.6.0/json)、[Bloomberg 官方 wheel 索引](https://blpapi.bloomberg.com/repository/releases/python/simple/blpapi/)。
 
 完整 CI 分別在 Windows 的三個 Python 版本實際建立環境、安裝固定套件、載入 SDK、處理合成 BQL 回應及執行 Setup.cmd。這些相容測試不連 Terminal、不查市場資料；帳號的 BQL 權限與 Excel 一致性仍沿用原本的獨立驗收。
