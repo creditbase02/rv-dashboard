@@ -104,7 +104,7 @@ pnpm run test:bql -- http://127.0.0.1:8766/
 
 ### 一般使用者：從網站下載 Windows 啟動包
 
-正式頁的「啟動這台電腦的 Bloomberg 連線」提供 `downloads/RV-BQL-Launcher.zip`。解壓縮後，首次雙擊 `Setup.cmd`，以 Python 3.12 64-bit 在該資料夾建立隔離環境並安裝固定版本套件；每次登入 Bloomberg 後雙擊 `Start.cmd`，自動開啟帶憑證的網頁。啟動器命令視窗須保持開啟，Ctrl+C 停止服務。公司套件下載限制或缺少 Python 時，網站提供 IT／安裝指引，不修改系統安全政策。
+正式頁的「啟動這台電腦的 Bloomberg 連線」提供 `downloads/RV-BQL-Launcher.zip`。解壓縮後，首次雙擊 `Setup.cmd`，以標準版 64 位元 CPython 3.12、3.13 或 3.14 在該資料夾建立隔離環境並安裝固定版本套件；每次登入 Bloomberg 後雙擊 `Start.cmd`，自動開啟帶憑證的網頁。啟動器命令視窗須保持開啟，Ctrl+C 停止服務。公司套件下載限制或缺少 Python 時，網站提供 IT／安裝指引，不修改系統安全政策。
 
 下載包只包含明確允許的啟動及驗證原始碼、中文說明與 CMD 檔，不打包 SDK 二進位檔、Python 執行環境、Excel、行情或憑證。單獨啟動時只下載公開的 `assets/luac-peer-definitions.json`，驗證後交給 bridge；沒有下載完整行情快照。只有使用者按取數按鈕才發 BQL 查詢。網站不能直接啟動未安裝的本機程式，因此不假裝下載按鈕能自動啟動 Bloomberg。
 
@@ -121,3 +121,11 @@ python scripts/start_bql_preview.py
 啟動器使用本專案 `.venv-bql` 的 polars-bloomberg 環境，啟動僅限 loopback 的服務，並開啟附有隨機連線憑證的正式頁面。若之前的本機測試站仍開著，先在其終端按 Ctrl+C，釋放 8768。保持啟動器視窗開啟，結束時按 Ctrl+C。憑證在 URL fragment，不送到 GitHub Pages；不要分享帶憑證的完整網址。若瀏覽器要求本機網路權限，允許此站存取後按「檢查連線」。
 
 啟動只檢查環境；每次明確按「取得一次 BQL 快照」才送一次完整查詢。沒有背景輪詢、排程、Excel 重刷或自動重試。失敗保留先前快照與資料日期。SDK／程序／頁面等待上限分別為 120／270／280 秒。遠端使用者也必須在自己的授權 Bloomberg 電腦啟動 bridge，網站伺服器不代抓 Terminal 資料。
+
+### Python 相容範圍與自動選版
+
+Windows x64 標準版 CPython 3.12、3.13、3.14 共用既有固定套件版本，不降版取數套件，也不改 BQL 查詢。Setup.cmd 優先沿用啟動包內已建立的相容環境，其次依序檢查 py launcher 的 3.12、3.13、3.14，最後檢查 PATH 的 python／python3；檢查只驗證版本與架構，不安裝套件或查行情。顯示選中的 Python 後，才建立隔離環境並安裝必要套件。
+
+現有環境不相容時停止，請解壓縮到新資料夾再設定；不刪除或改寫原有環境。3.11 以下不支援目前 polars-bloomberg 0.6.0 的 Requires-Python >=3.12；不接受 32-bit、ARM64 原生版、PyPy 或 free-threaded Python。依據：[PyPI metadata](https://pypi.org/pypi/polars-bloomberg/0.6.0/json)、[Bloomberg 官方 wheel 索引](https://blpapi.bloomberg.com/repository/releases/python/simple/blpapi/)。
+
+完整 CI 分別在 Windows 的三個 Python 版本實際建立環境、安裝固定套件、載入 SDK、處理合成 BQL 回應及執行 Setup.cmd。這些相容測試不連 Terminal、不查市場資料；帳號的 BQL 權限與 Excel 一致性仍沿用原本的獨立驗收。

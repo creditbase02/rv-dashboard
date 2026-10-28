@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
+from contextlib import ExitStack
 
 from scripts.build_bql_launcher import build
 from scripts import bloomberg_bridge, start_bql_preview
@@ -61,6 +62,42 @@ class BqlLauncherTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'Python 3.12'):
                 setup['main']()
             run.assert_not_called()
+
+    def test_runtime_guard_accepts_standard_x64_versions_only(self):
+        setup=runpy.run_path(str(Path(__file__).resolve().parents[1]/'bql-launcher/setup.py'))
+        cases=[((3,minor),64,'win-amd64','CPython',None,True) for minor in (12,13,14)]
+        cases += [((3,minor),64,'win-amd64','CPython',None,False) for minor in (4,10,11,15)]
+        cases += [((3,13),32,'win32','CPython',None,False),
+                  ((3,13),64,'win-arm64','CPython',None,False),
+                  ((3,13),64,'win-amd64','PyPy',None,False),
+                  ((3,14),64,'win-amd64','CPython',1,False)]
+        for version,bits,target,implementation,free_threaded,accepted in cases:
+            with self.subTest(version=version,bits=bits,target=target,implementation=implementation,free_threaded=free_threaded),ExitStack() as stack:
+                stack.enter_context(patch.object(setup['sys'],'version_info',version))
+                stack.enter_context(patch.object(setup['sys'],'platform','win32'))
+                stack.enter_context(patch.object(setup['struct'],'calcsize',return_value=bits//8))
+                stack.enter_context(patch.object(setup['platform'],'python_implementation',return_value=implementation))
+                stack.enter_context(patch.object(setup['sysconfig'],'get_platform',return_value=target))
+                stack.enter_context(patch.object(setup['sysconfig'],'get_config_var',return_value=free_threaded))
+                if accepted:
+                    setup['ensure_runtime']()
+                else:
+                    with self.assertRaisesRegex(RuntimeError,'unsupported'):
+                        setup['ensure_runtime']()
+
+    def test_incompatible_existing_environment_stops_before_pip(self):
+        setup=runpy.run_path(str(Path(__file__).resolve().parents[1]/'bql-launcher/setup.py'))
+        main=setup['main']
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            python=root/'.venv-bql/Scripts/python.exe'
+            python.parent.mkdir(parents=True)
+            python.touch()
+            with patch.dict(main.__globals__,{'ROOT':root,'ensure_runtime':lambda:None}),patch.object(setup['subprocess'],'run',side_effect=subprocess.CalledProcessError(1,'runtime check')) as run:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    main()
+                run.assert_called_once()
+                self.assertIn('--check-runtime',run.call_args.args[0])
 
 
 if __name__=='__main__':

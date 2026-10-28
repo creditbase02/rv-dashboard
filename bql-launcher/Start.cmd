@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 if not exist ".venv-bql\Scripts\python.exe" (
-  echo Please run Setup.cmd first. Python 3.12 64-bit is required.
+  echo Please run Setup.cmd first. Standard 64-bit CPython 3.12, 3.13 or 3.14 is required.
   pause
   exit /b 1
 )
