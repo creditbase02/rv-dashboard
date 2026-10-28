@@ -24,6 +24,8 @@ jobs:
   tests:
     # Match the OS supported by the pinned Playwright version.
     runs-on: ubuntu-24.04
+    outputs:
+      validation_mode: ${{ steps.validation.outputs.mode }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -183,11 +185,39 @@ jobs:
         with:
           path: public
 
+  bql-python:
+    name: BQL Windows Python ${{ matrix.python }}
+    needs: tests
+    if: needs.tests.outputs.validation_mode == 'full'
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: x64
+      - name: Install pinned BQL dependencies in an isolated environment
+        run: python bql-launcher/setup.py
+      - name: Verify SDK import and synthetic data processing without Terminal
+        run: |
+          & bql-launcher/.venv-bql/Scripts/python.exe -c "import blpapi, polars, polars_bloomberg; from polars_bloomberg import BQuery; assert callable(BQuery.bql)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & bql-launcher/.venv-bql/Scripts/python.exe -m unittest tests.test_bql_launcher tests.test_bql_probe -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify Setup.cmd reuses the compatible environment
+        run: cmd /c "bql-launcher\Setup.cmd < nul"
+
   deploy:
     if: >-
+      always() && needs.tests.result == 'success' &&
+      (needs.bql-python.result == 'success' || needs.bql-python.result == 'skipped') &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       github.ref == 'refs/heads/main'
-    needs: tests
+    needs: [tests, bql-python]
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

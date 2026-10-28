@@ -24,6 +24,6 @@ pnpm run test:browser -- http://127.0.0.1:8766/
 
 正式單券頁另提供 [BQL API 預覽](https://creditbase02.github.io/rv-dashboard/bql.html)：在公司電腦執行 `python scripts/start_bql_preview.py` 開啟連線頁面，每次按鈕只抓一次。原有 Excel 更新與發布保留；API 快照僅供記憶體內預覽，一致性驗收完成前不覆蓋正式資料。
 
-一般使用者可直接從該頁下載 Windows 啟動包，不必下載 repository。解壓縮後首次執行 `Setup.cmd`，之後每次登入 Bloomberg 後執行 `Start.cmd`；需要 Python 3.12 64-bit 與對應 BQL 資料權限。
+一般使用者可直接從該頁下載 Windows 啟動包，不必下載 repository。解壓縮後首次執行 `Setup.cmd`，之後每次登入 Bloomberg 後執行 `Start.cmd`；需要標準版 64 位元 CPython 3.12、3.13 或 3.14 與對應 BQL 資料權限。
 
 獨立的 [本機 BQL 單券測試站](bql-test-site/README.md)：執行 `python bql-test-site/serve.py`，每次按鈕只取得一次 API 快照，提供單券圖表與篩選；不發布或覆蓋正式資料，不重刷 Excel。

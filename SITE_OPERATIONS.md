@@ -69,7 +69,7 @@ Bloomberg BQL 一鍵診斷仍是唯讀可行性驗證，尚未接正式發布。
 
 建置包不含任何市場 JSON；失敗保留畫面上一次快照與日期，禁止改標為更新成功。SDK 等待上限 120 秒、子程序總上限 270 秒、頁面等待 280 秒。詳見 `bql-test-site/README.md`。
 
-正式頁另提供 `downloads/RV-BQL-Launcher.zip`，由 `scripts/build_bql_launcher.py` 以 allowlist 打包純原始碼及 CMD，不含 SDK、執行環境、行情或憑證。使用者解壓縮後執行 Setup.cmd（需要 Python 3.12 64-bit），之後每次執行 Start.cmd。獨立啟動器只下載並嚴格驗證網站公開 Peer Group mapping，使用 `--peer-definitions` 交給 bridge；不依賴 repository、Git 或完整公開行情。未取得所需權限時仍失敗，不提供 ReferenceData fallback。
+正式頁另提供 `downloads/RV-BQL-Launcher.zip`，由 `scripts/build_bql_launcher.py` 以 allowlist 打包純原始碼及 CMD，不含 SDK、執行環境、行情或憑證。使用者解壓縮後執行 Setup.cmd（需要標準版 64 位元 CPython 3.12、3.13 或 3.14），之後每次執行 Start.cmd。獨立啟動器只下載並嚴格驗證網站公開 Peer Group mapping，使用 `--peer-definitions` 交給 bridge；不依賴 repository、Git 或完整公開行情。未取得所需權限時仍失敗，不提供 ReferenceData fallback。
 
 ### IG Supply 資料
 
