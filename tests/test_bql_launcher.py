@@ -2,6 +2,8 @@ from pathlib import Path
 import io
 import json
 import runpy
+import ssl
+import urllib.error
 import subprocess
 import sys
 import tempfile
@@ -45,6 +47,52 @@ class BqlLauncherTests(unittest.TestCase):
                             start_bql_preview.bundle_peer_mapping()
                     fetch.assert_called_once()
                     self.assertTrue(fetch.call_args.args[0].endswith('/assets/luac-peer-definitions.json'))
+
+    def test_known_ca_error_retries_with_chain_and_hostname_verification(self):
+        error = urllib.error.URLError(ssl.SSLCertVerificationError(
+            1, 'Basic Constraints of CA cert not marked critical'))
+        response = io.BytesIO(b'[]')
+        with patch.object(start_bql_preview.urllib.request, 'urlopen', side_effect=[error, response]) as fetch:
+            self.assertIs(start_bql_preview.open_peer_mapping(), response)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertNotIn('context', fetch.call_args_list[0].kwargs)
+        context = fetch.call_args.kwargs['context']
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+        self.assertFalse(context.verify_flags & ssl.VERIFY_X509_STRICT)
+        self.assertEqual(context.verify_flags, ssl.create_default_context().verify_flags & ~ssl.VERIFY_X509_STRICT)
+
+    def test_other_download_errors_never_retry(self):
+        for reason in [ssl.SSLCertVerificationError(1, message) for message in (
+                'certificate has expired', 'hostname mismatch', 'unable to get local issuer certificate')
+                ] + [OSError('network unavailable'), 'Basic Constraints of CA cert not marked critical']:
+            error = urllib.error.URLError(reason)
+            with self.subTest(reason=reason), patch.object(start_bql_preview.urllib.request, 'urlopen', side_effect=error) as fetch:
+                with self.assertRaises(urllib.error.URLError):
+                    start_bql_preview.open_peer_mapping()
+                fetch.assert_called_once()
+
+    def test_failed_fallback_is_not_retried_again(self):
+        error = urllib.error.URLError(ssl.SSLCertVerificationError(
+            1, 'Basic Constraints of CA cert not marked critical'))
+        with patch.object(start_bql_preview.urllib.request, 'urlopen', side_effect=error) as fetch:
+            with self.assertRaises(urllib.error.URLError):
+                start_bql_preview.open_peer_mapping()
+            self.assertEqual(fetch.call_count, 2)
+
+    def test_mapping_failures_stop_before_bridge_start(self):
+        cases = [(urllib.error.URLError('TLS failure'), 'mapping_download_failed'),
+                 (ValueError('invalid mapping'), 'mapping_validation_failed')]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'standalone-launcher.txt').touch()
+            python = root / 'python.exe'
+            python.touch()
+            for error, label in cases:
+                with self.subTest(label=label), patch.object(start_bql_preview, 'ROOT', root), patch.object(sys, 'argv', ['launcher', '--bql-python', str(python)]), patch.object(start_bql_preview, 'bundle_peer_mapping', side_effect=error), patch.object(start_bql_preview.subprocess, 'Popen') as spawn:
+                    with self.assertRaisesRegex(RuntimeError, label):
+                        start_bql_preview.main()
+                    spawn.assert_not_called()
 
     def test_standalone_bridge_uses_mapping_without_a_quote_snapshot(self):
         definitions = [{'name':'Banks','tickers':['TK']}]

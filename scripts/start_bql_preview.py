@@ -3,21 +3,39 @@ from pathlib import Path
 import argparse
 import json
 import secrets
+import ssl
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = 'https://creditbase02.github.io/rv-dashboard/bql.html'
+PEER_MAPPING_URL = 'https://creditbase02.github.io/rv-dashboard/assets/luac-peer-definitions.json'
+
+
+def open_peer_mapping():
+    """Retry only the known enterprise CA strict-mode incompatibility."""
+    try:
+        return urllib.request.urlopen(PEER_MAPPING_URL, timeout=25)
+    except urllib.error.URLError as error:
+        reason = error.reason
+        if (not isinstance(reason, ssl.SSLCertVerificationError)
+                or 'Basic Constraints of CA cert not marked critical' not in str(reason)
+                or not hasattr(ssl, 'VERIFY_X509_STRICT')):
+            raise
+        context = ssl.create_default_context()
+        context.verify_flags &= ~ssl.VERIFY_X509_STRICT
+        return urllib.request.urlopen(PEER_MAPPING_URL, context=context, timeout=25)
 
 
 def bundle_peer_mapping():
     """Fetch public classifications once; never fetch a quote snapshot."""
     sys.path.insert(0, str(ROOT))
     from peer_data import validate_peer_definitions
-    with urllib.request.urlopen('https://creditbase02.github.io/rv-dashboard/assets/luac-peer-definitions.json', timeout=25) as response:
+    with open_peer_mapping() as response:
         raw = response.read(256 * 1024 + 1)
     if len(raw) > 256 * 1024:
         raise ValueError('Peer mapping exceeds size limit')
@@ -38,7 +56,13 @@ def main():
         parser.error('BQL Python is missing. Run Setup.cmd first, then Start.cmd.')
     mapping_args = []
     if (ROOT / 'standalone-launcher.txt').is_file():
-        mapping_args = ['--peer-definitions', str(bundle_peer_mapping())]
+        try:
+            mapping = bundle_peer_mapping()
+        except (urllib.error.URLError, TimeoutError) as error:
+            raise RuntimeError('mapping_download_failed: Could not download public Peer Group mapping; check network and TLS certificates. Bridge has not started.') from error
+        except (ValueError, TypeError) as error:
+            raise RuntimeError('mapping_validation_failed: Public Peer Group mapping is invalid. Bridge has not started.') from error
+        mapping_args = ['--peer-definitions', str(mapping)]
     token = secrets.token_hex(32)
     bridge = subprocess.Popen([
         sys.executable, str(ROOT/'scripts/bloomberg_bridge.py'), '--token', token,

@@ -6,5 +6,5 @@ if not exist ".venv-bql\Scripts\python.exe" (
   exit /b 1
 )
 ".venv-bql\Scripts\python.exe" "scripts\start_bql_preview.py"
-if errorlevel 1 echo Connection failed. Confirm Bloomberg is logged in and no other bridge is using port 8768.
+if errorlevel 1 echo Startup failed. Read the error above for mapping download, TLS, validation, or bridge details.
 pause
