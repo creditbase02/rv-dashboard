@@ -59,6 +59,8 @@ if __name__ == '__main__':
         args = parser.parse_args()
         if args.check_runtime:
             ensure_runtime()
+            if args.repair and Path(sys.prefix).resolve() == (ROOT / '.venv-bql').resolve():
+                raise RuntimeError('Repair requires a system Python outside this environment.')
             print('Compatible Python '+sys.version.split()[0]+' (Windows x64).')
         else:
             main(repair=args.repair)

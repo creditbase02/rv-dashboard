@@ -28,7 +28,7 @@ pause
 exit /b 1
 :tryPython
 rem Some Python managers return success even when no runtime exists: require our sentinel.
-call %* setup.py --check-runtime 2>nul | findstr /b /c:"Compatible Python " >nul
+call %* setup.py --check-runtime %SETUP_ARGS% 2>nul | findstr /b /c:"Compatible Python " >nul
 if errorlevel 1 exit /b 1
 call %* setup.py %SETUP_ARGS%
 rem A selected runtime failure must not trigger another package installation.

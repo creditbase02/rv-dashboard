@@ -212,8 +212,8 @@ def _main():
         if bridge.poll() is None:
             bridge.terminate()
             bridge.wait(timeout=10)
-        if read_session() == token:
-            (ROOT / '.bql-session.json').unlink(missing_ok=True)
+        # Leave expired state for the next serialized startup to overwrite.
+        # An older owner must not delete the replacement session after Reset.
 
 
 def main():
