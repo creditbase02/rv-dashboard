@@ -131,3 +131,16 @@ Windows x64 標準版 CPython 3.12、3.13、3.14 共用既有固定套件版本�
 現有環境不相容時停止，請解壓縮到新資料夾再設定；不刪除或改寫原有環境。3.11 以下不支援目前 polars-bloomberg 0.6.0 的 Requires-Python >=3.12；不接受 32-bit、ARM64 原生版、PyPy 或 free-threaded Python。依據：[PyPI metadata](https://pypi.org/pypi/polars-bloomberg/0.6.0/json)、[Bloomberg 官方 wheel 索引](https://blpapi.bloomberg.com/repository/releases/python/simple/blpapi/)。
 
 完整 CI 分別在 Windows 的三個 Python 版本實際建立環境、安裝固定套件、載入 SDK、處理合成 BQL 回應及執行 Setup.cmd。這些相容測試不連 Terminal、不查市場資料；帳號的 BQL 權限與 Excel 一致性仍沿用原本的獨立驗收。
+
+## Launcher mapping TLS diagnostics
+
+The standalone launcher downloads public Peer Group classifications before starting
+its bridge. `mapping_download_failed` identifies a network or TLS failure;
+`mapping_validation_failed` identifies invalid mapping content. Neither means a
+Bloomberg query failed, and both stop before bridge startup.
+
+For the specific certificate verification error `Basic Constraints of CA cert not
+marked critical`, the launcher retries once with only `VERIFY_X509_STRICT` removed.
+CA chain, hostname and certificate validity checks remain enabled. Other TLS
+errors fail without this fallback; a failed retry is not retried again. This does
+not establish Bloomberg permissions or approve API/Excel data equivalence.
