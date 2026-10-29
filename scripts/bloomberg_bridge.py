@@ -2,8 +2,10 @@
 from __future__ import annotations
 import argparse
 import hmac
+import hashlib
 import json
 import os
+import platform
 import subprocess
 import sys
 import threading
@@ -22,6 +24,42 @@ SUPPORTED_RUNTIME_CONFIRMED=False
 PROBE_LOCK=threading.Lock()
 PREVIEW_ENABLED=False
 PEER_DEFINITIONS_PATH=None
+QUALIFICATION_PATH=None
+
+def qualification_version():
+    digest=hashlib.sha256((PROVIDER+str(sys.version_info[:2])).encode())
+    # Local binding is hashed only into private approval evidence, never returned.
+    digest.update(str(ROOT.resolve()).encode())
+    digest.update(platform.node().encode())
+    for path in (ROOT/'scripts/probe_bloomberg_luac.py',ROOT/'luac_data.py'):
+        digest.update(path.read_bytes())
+    setup=ROOT/'setup.py'
+    if not setup.is_file(): setup=ROOT/'bql-launcher/setup.py'
+    digest.update(setup.read_bytes())
+    return digest.hexdigest()
+
+
+def api_qualified():
+    if QUALIFICATION_PATH is None: return False
+    try:
+        approval=json.loads(QUALIFICATION_PATH.read_text(encoding='utf-8'))
+        return approval.get('version')==qualification_version() and approval.get('passed') is True
+    except (OSError,ValueError,TypeError,AttributeError): return False
+
+
+def record_qualification(result,baseline):
+    if QUALIFICATION_PATH is None: return
+    if result.get('passed') is not True:
+        QUALIFICATION_PATH.unlink(missing_ok=True)
+        return
+    # Only aggregate comparison evidence stays on this computer.
+    approval={'version':qualification_version(),'passed':True,'date':baseline['date'],
+              'count':result.get('count'),'max_oas_diff_bp':result.get('max_oas_diff_bp'),
+              'max_yield_diff_pct':result.get('max_yield_diff_pct')}
+    temporary=QUALIFICATION_PATH.with_suffix('.tmp')
+    temporary.write_text(json.dumps(approval,allow_nan=False),encoding='utf-8')
+    temporary.replace(QUALIFICATION_PATH)
+
 
 def worker(mode,data=None):
     try:
@@ -42,6 +80,7 @@ def health():
     result=worker('--health')
     result['supported_runtime_confirmed']=SUPPORTED_RUNTIME_CONFIRMED
     result['preview_enabled']=PREVIEW_ENABLED
+    result['api_qualified']=api_qualified()
     result['ready']=bool(result.get('ready') and SUPPORTED_RUNTIME_CONFIRMED)
     if not SUPPORTED_RUNTIME_CONFIRMED and not result.get('error_class'):
         result['error_class']='supported_runtime_unconfirmed'
@@ -53,7 +92,11 @@ def run_probe(baseline):
         return {'passed':False,'error_class':'supported_runtime_unconfirmed'}
     if not PROBE_LOCK.acquire(blocking=False):
         return {'passed':False,'error_class':'probe_busy'}
-    try: return worker('--stdin',baseline)
+    try:
+        result=worker('--stdin',baseline)
+        record_qualification(result,baseline)
+        result['api_qualified']=api_qualified()
+        return result
     finally: PROBE_LOCK.release()
 
 
@@ -73,6 +116,7 @@ def run_preview():
         result=worker('--preview',{'peer_definitions':definitions})
         if result.get('ok'):
             validate_luac(result['data'])
+            result['api_qualified']=api_qualified()
             if result.get('validation')!='schema_only' or result.get('comparison')!='not_verified':
                 raise ValueError('invalid_preview')
         return result
@@ -148,7 +192,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500,{'error':'diagnostic_failed'})
 
 def main():
-    global BQL_PYTHON,SUPPORTED_RUNTIME_CONFIRMED,PROVIDER,PREVIEW_ENABLED,PEER_DEFINITIONS_PATH
+    global BQL_PYTHON,SUPPORTED_RUNTIME_CONFIRMED,PROVIDER,PREVIEW_ENABLED,PEER_DEFINITIONS_PATH,QUALIFICATION_PATH
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--token',required=True); p.add_argument('--port',type=int,default=8768)
     p.add_argument('--bql-python',default=sys.executable)
@@ -157,11 +201,13 @@ def main():
     p.add_argument('--enable-preview',action='store_true',help='Allow token-authenticated read-only preview from the RV site or local lab')
     p.add_argument('--peer-definitions',type=Path,help='Validated mapping-only file for standalone launcher')
     p.add_argument('--launcher-managed',action='store_true',help='Stop on launcher stdin EOF; enable authenticated local stop')
+    p.add_argument('--qualification-file',type=Path,help='Local aggregate evidence from a successful Excel comparison')
     a=p.parse_args()
     if len(a.token)<32: p.error('token must contain at least 32 characters')
     BQL_PYTHON=a.bql_python; SUPPORTED_RUNTIME_CONFIRMED=a.supported_runtime_confirmed; PROVIDER=a.provider
     PREVIEW_ENABLED=a.enable_preview
     PEER_DEFINITIONS_PATH=a.peer_definitions
+    QUALIFICATION_PATH=a.qualification_file
     server=ThreadingHTTPServer(('127.0.0.1',a.port),Handler); server.token=a.token
     server.launcher_managed=a.launcher_managed
     if a.launcher_managed: server.daemon_threads=True

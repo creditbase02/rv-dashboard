@@ -71,7 +71,7 @@ powershell -File scripts/start_bloomberg_bridge.ps1 `
 
 每個 BQL item 按 ID 嚴格合併；重複 ID、缺欄、缺值、非有限數字、部分回應均停止。OAS 與 Yield 每列的 `DATE` 必須完整且一致，並與比較 Excel 資料日相符；單券與全體查詢也須同日。沒有 DATE 就回 `market_date_unverified`，不從 Excel 日期或電腦時鐘補值。
 
-通過條件：完整 ID 集合一致、所有必填欄位有效、名稱／發行人／ticker／到期日／評級／產業一致，OAS 最大差異 ≤0.5 bp，Yield 最大差異 ≤0.01 個百分點。沿用 schema v2 與既有品質旗標；異常值保留並標記，不跳過該券湊出成功。
+通過條件：完整 ID 集合一致、所有必填欄位有效、名稱／發行人／ticker／到期日／評級／產業一致，剩餘年期差異 ≤1e-8 年，OAS 最大差異 ≤0.5 bp，Yield 最大差異 ≤0.01 個百分點。沿用 schema v2 與既有品質旗標；異常值保留並標記，不跳過該券湊出成功。
 
 bridge 僅綁定 loopback；每個實際請求都檢查 Origin 與 token。一次只跑一個診斷；polars-bloomberg 的單次事件等待上限為 120 秒，整個子程序最長 270 秒，網頁最長等待 280 秒。逾時停止，不重試全體查詢。SDK 輸出不轉送給網頁或寫入日誌。診斷回應沒有逐券記錄、工作簿資訊或來源路徑。
 
@@ -86,7 +86,7 @@ bridge 僅綁定 loopback；每個實際請求都檢查 Origin 與 token。一�
 
 模組存在與 Terminal port 可連線僅是環境線索；health 不驗證登入或權限。只有公司電腦上，核准的本機呼叫方式與瀏覽器端點實測成功、同工作階段全量比對通過，才能判定一鍵取數可行。若只可用遠端 BQNT，請記錄「本機網頁呼叫路徑未成立」，向 Bloomberg 詢問受支援整合方式。
 
-通過後另行實作預覽與確認發布至 `/publish/luac`；本版本不修改 Worker、公開資料資產或正式發布流程。
+通過後，新版啟動器會在本機保存目前取數版本的彙總比對資格。回到 `bonds.html` 檢查連線、重新取數並確認後，可透過既有 `/publish/luac` 發布。未通過時僅預覽；本次比對本身不建立 PR。
 
 ## 開發驗證
 
@@ -167,3 +167,11 @@ keep the original launcher window open while using a reused connection. Reset
 opens a new page; old tabs carry the previous token. No reset performs a market
 query or publishes data. Repair needs network access and leaves the backup intact
 if package installation fails.
+
+## 日常 API 更新
+
+Start.cmd／Reset.cmd 開啟正式單券頁。第一次從該頁前往更新頁完成 Excel
+全量比對，再回單券頁取數並確認發布。`.bql-qualification.json` 只保留本機
+彙總證據與版本，重開機後沿用；換資料夾、取數/schema 程式、套件規格或 Python
+主次版本改變時需重新比對。未成功比對、舊版 bridge 或未確認本次快照都停用發布。
+正式發布只使用既有上傳密碼/session 與 Worker 的公開快照契約，local token 不外送。

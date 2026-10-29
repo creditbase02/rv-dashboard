@@ -55,11 +55,21 @@ Yield、期限或 OAS 超出公開規則時保留原始數值並標記，但預�
 
 LUAC 自動資料 PR 的安全條件為：作者等於 `RV_UPLOAD_APP_LOGIN`、branch 以 `automation/luac-data-` 開頭、label 為 `automated-luac-data`、diff 只有 `assets/luac-bonds.json`，且完整 CI 通過。`LUAC_UPLOAD_ENABLED` 與網站 `luac_enabled` 是獨立開關，未完成公司網路 preview 與當期資料核對前保持 `false`。
 
-Bloomberg BQL 一鍵診斷仍是唯讀可行性驗證，尚未接正式發布。公司電腦必須先確認 Bloomberg 支援本機 Python 程序使用 BQL；僅能在遠端 BQNT 執行不算網頁連線成功。一般 `blpapi` 的 ReferenceData 欄位不得視為原 BQL 等價來源。
+Bloomberg BQL 比對本身維持唯讀；通過一次性比對後，正式單券頁可透過既有 LUAC Worker 發布 API 快照。公司電腦必須先確認 Bloomberg 支援本機 Python 程序使用 BQL；僅能在遠端 BQNT 執行不算網頁連線成功。一般 `blpapi` 的 ReferenceData 欄位不得視為原 BQL 等價來源。
 
 完整操作步驟與失敗判定見 `BQL_DIAGNOSTICS.md`。先建置本機網站並啟動 8766 靜態服務，再執行 `powershell -File scripts/start_bloomberg_bridge.ps1`；未確認環境時只顯示缺項。Bloomberg 確認本機呼叫方式後才加 `-BqlPython <核准執行檔> -SupportedRuntimeConfirmed`。bridge 僅綁定 loopback，使用隨機 token 與來源限制，不呼叫發布 Worker。
 
-查詢保留原 BQL 的 active／LUACTRUU 成分交集、BVAL BID OAS 與 Convention Yield，產業維持 BICS Level 1。用 repository 外的比較副本同工作階段刷新驗證，不覆寫原檔。先查單券，再由明確按鈕觸發完整查詢；僅回傳彙總結果。行情日期必須來自 BQL OAS／Yield 的 DATE metadata，不從執行日期或 Excel 日期補值。ID、必填欄位、靜態欄位與產業一致，OAS ≤0.5 bp、Yield ≤0.01 個百分點後，才能評估正式整合；缺值、重複、部分回應、日期未確認、權限錯誤或逾時一律不通過。
+查詢保留原 BQL 的 active／LUACTRUU 成分交集、BVAL BID OAS 與 Convention Yield，產業維持 BICS Level 1。用 repository 外的比較副本同工作階段刷新驗證，不覆寫原檔。先查單券，再由明確按鈕觸發完整查詢；僅回傳彙總結果。行情日期必須來自 BQL OAS／Yield 的 DATE metadata，不從執行日期或 Excel 日期補值。ID、必填欄位、靜態欄位與產業一致，OAS ≤0.5 bp、Yield ≤0.01 個百分點後，才可啟用正式 API 發布；缺值、重複、部分回應、日期未確認、權限錯誤或逾時一律不通過。
+
+### API 正式更新與一次性比對
+
+`bonds.html` 為日常 API 更新入口，先顯示已發布快照。新版啟動器的 Start／Reset 開啟此頁；載入與 health 不查詢行情，使用者按鈕才透過現有 `/preview` 取一次完整快照。日期不得早於正式資料，筆數 ±20%、4 MiB、schema v2 與現行 Peer mapping 檢查通過後才顯示候選資料。每次取數清除上次確認，失敗保留畫面與日期但停用發布。
+
+首次轉正式需同工作階段刷新、儲存 Excel，從單券頁的「前往一次性 Excel 比對」到更新頁選檔及驗證，勾選確認後執行 `/probe`。完整 ID、日期、靜態欄位（含剩餘年期，容許浮點差 1e-8）、產業一致，OAS ≤0.5 bp、Yield ≤0.01 個百分點才通過。新版 bridge 只將彙總結果及取數版本存於本機 `.bql-qualification.json`；取數／schema 程式、套件規格或 Python 主次版本改變會使結果失效。檔案不進 ZIP、Git、公開資產或發布 request。失敗比對撤銷既有資格。舊版 bridge 或沒有資格時可預覽，不能從正式 API UI 發布。
+
+比對完成後回單券頁檢查連線，再取一次 API 快照，核對摘要、勾選確認、輸入既有上傳密碼。瀏覽器只送 `{data:<schema v2 公開快照>}` 至現有 Worker `/publish/luac`，不含本機 token、Excel 或來源資訊。Worker 仍重驗 schema、日期、筆數及單檔 PR，既有 CI／合併／部署狀態查詢不變。資格是本機上線檢核，非新的 Worker 身分驗證；發布仍須密碼 session。資料發布後 `bonds.html` 的公開快照與 manifest 才更新。Excel 上傳維持備援；RV、Supply 與 peer 不變。
+
+`bql.html` 及本機 lab 保留相容預覽用途，不提供發布。舊啟動器可預覽，但需更新啟動器才能保存一次性比對資格。公司環境真實比對尚待使用者執行，不能將合成測試視為真實一致性驗收。
 
 ### 本機 BQL 單券測試站
 

@@ -23,3 +23,6 @@ luac_rv.md
 .bql-session.json
 .bql-launcher.lock
 .venv-bql-backup-*/
+
+.bql-qualification.json
+.bql-qualification.tmp

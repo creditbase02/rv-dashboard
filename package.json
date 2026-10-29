@@ -2,6 +2,7 @@
   "name": "rv-dashboard",
   "private": true,
   "scripts": {
+    "test:bql-production": "node tests/bql-production-browser.cjs",
     "test:bql": "node tests/bql-browser.cjs",
     "test:bql-lab": "node tests/bql-lab-browser.cjs",
     "test:browser": "node tests/rv-browser.cjs",

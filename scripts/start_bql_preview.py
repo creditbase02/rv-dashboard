@@ -14,7 +14,7 @@ import urllib.request
 import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
-SITE = 'https://creditbase02.github.io/rv-dashboard/bql.html'
+SITE = 'https://creditbase02.github.io/rv-dashboard/bonds.html'
 PEER_MAPPING_URL = 'https://creditbase02.github.io/rv-dashboard/assets/luac-peer-definitions.json'
 
 
@@ -177,6 +177,7 @@ def _main():
         sys.executable, str(ROOT/'scripts/bloomberg_bridge.py'), '--token', token,
         '--bql-python', str(args.bql_python.resolve()), '--provider', args.provider,
         '--supported-runtime-confirmed', '--enable-preview', '--launcher-managed',
+        '--qualification-file', str(ROOT/'.bql-qualification.json'),
     ] + mapping_args, cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     try:

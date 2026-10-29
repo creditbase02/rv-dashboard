@@ -9,14 +9,28 @@
   <link rel="canonical" href="https://creditbase02.github.io/rv-dashboard/bonds.html">
   <link rel="stylesheet" href="assets/site.css">
   <link rel="stylesheet" href="assets/bonds.css">
+  <link rel="stylesheet" href="assets/bql-update.css?v={{LUAC_VERSION}}">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要內容</a>
   <header class="site-header"><div class="nav-shell"><a class="brand" href="./">RV 相對價值</a><nav class="site-nav" aria-label="主要導覽"><a href="https://creditbase02.github.io/ib-knowledge-base/">券商報告知識庫</a><a href="./">RV 相對價值</a><a href="bonds.html" aria-current="page">單券相對價值比較表</a><a href="supply.html">IG Supply</a><a href="update.html">更新資料</a></nav></div></header>
   <main id="main-content" class="bond-shell">
-    <div class="bond-heading"><div><p class="bond-kicker">LUAC / SINGLE-BOND RELATIVE VALUE</p><h1>單券相對價值比較表</h1></div><p class="bond-date">資料日期 <time datetime="{{LUAC_DATE_ISO}}" data-version="{{LUAC_VERSION}}">{{LUAC_DATE_DISPLAY}}</time><br><strong id="bond-total">載入中</strong> · 歷史快照，非即時行情</p></div>
+    <div class="bond-heading"><div><p class="bond-kicker">LUAC / SINGLE-BOND RELATIVE VALUE</p><h1>單券相對價值比較表</h1></div><p class="bond-date">資料日期 <time datetime="{{LUAC_DATE_ISO}}" data-version="{{LUAC_VERSION}}">{{LUAC_DATE_DISPLAY}}</time><br><strong id="bond-total">載入中</strong> · <span id="bond-source">已發布快照，非即時行情</span></p></div>
 
-    <p class="grouping-notice"><a href="bql.html">BQL API 預覽 ↗</a> · 從公司 Bloomberg 手動取數；<a href="update.html">Excel 更新</a>繼續使用原有流程。</p>
+    <!-- API_UPDATE_START -->
+    <section id="api-update" class="api-update" aria-labelledby="api-title">
+      <div class="api-heading"><div><p class="bond-kicker">BLOOMBERG BQL · BVAL BID</p><h2 id="api-title">API 更新單券資料</h2><p>取得快照、核對摘要，再發布到正式站。未連線時仍可查看上次發布的資料。</p></div><span id="api-connection" class="api-badge">尚未連線</span></div>
+      <div class="api-actions"><button id="api-fetch" class="bond-button" type="button" disabled>取得最新 API 快照</button><button id="api-check" class="bond-button secondary" type="button">檢查連線</button><button id="api-published" class="bond-button secondary" type="button">查看已發布資料</button><a href="update.html">Excel 備援更新 ↗</a></div>
+      <p id="api-status" class="api-status" role="status" aria-live="polite">正在讀取正式資料與更新設定。</p>
+      <div id="api-summary" class="api-summary" hidden><span>API 行情日期 <strong id="api-date"></strong></span><span>單券 <strong id="api-count"></strong></span><span>品質旗標 <strong id="api-anomalies"></strong></span><span id="api-snapshot-state">尚未發布</span></div>
+      <form id="api-publish-form" class="api-publish" hidden>
+        <label class="api-confirm"><input id="api-confirm" type="checkbox">我已核對上方 API 日期、筆數及圖表，確認發布這份快照。</label>
+        <div class="api-actions"><label>上傳密碼 <input id="api-password" type="password" autocomplete="current-password" maxlength="200"></label><button id="api-publish" class="bond-button" type="submit" disabled>確認並發布 API 資料</button></div>
+        <p id="api-publish-status" class="api-status" role="status" aria-live="polite">尚未送出；發布完成後才會成為所有人可見的正式資料。</p>
+      </form>
+      <details id="api-setup"><summary>首次設定、一次性 Excel 比對或連線修復</summary><p>首次完整解壓縮啟動包，執行 Setup.cmd。日常登入 Bloomberg Terminal 後執行 Start.cmd；重開機後不必重新安裝。連線失效用 Reset.cmd，安裝損壞用 Repair.cmd。</p><div class="api-actions"><a id="api-launcher" href="downloads/RV-BQL-Launcher.zip?v={{LAUNCHER_VERSION}}" download="RV-BQL-Launcher.zip">下載 Windows 啟動包 ↓</a><a id="api-qualification" href="update.html">前往一次性 Excel 比對 ↗</a></div><p id="api-qualification-status">首次正式發布前，需在同一工作階段更新並儲存 Excel，完成全量 ID、欄位、日期、OAS 與 Yield 比對。通過後本機會記住結果，日常 API 更新不需再選 Excel；取數程式變更或換資料夾時需重新比對。</p><p>每次按取數只查詢一次，不會自動更新或重試市場查詢。快照留在本頁記憶體，按「確認並發布」後才送出公開資料；Bloomberg 連線憑證不會送往發布服務。</p></details>
+    </section>
+    <!-- API_UPDATE_END -->
     <section class="bond-controls" aria-labelledby="filter-title">
       <div class="control-heading"><div><h2 id="filter-title">篩選與顯示</h2><p>預設顯示 AAA 至 BBB。拖移三層篩選可改變選項連動順序；第二層可在產業與 Peer Group 之間切換；圖表與表格始終套用全部條件。</p></div><button id="reset-filters" class="bond-button secondary" type="button">重設</button></div>
       <div class="control-grid">
@@ -62,6 +76,7 @@
   <div id="bond-tooltip" class="bond-tooltip" role="tooltip" hidden></div>
   <script src="assets/luac-model.js?v={{LUAC_VERSION}}" defer></script>
   <script src="assets/bonds.js?v={{LUAC_VERSION}}" defer></script>
+  <script src="assets/bql-update.js?v={{LUAC_VERSION}}" defer></script>
   <footer class="site-footer"><span>公開摘要版｜資料僅供研究參考，不構成投資建議。</span><span>內容來源：經驗證的 LUAC 資料快照</span></footer>
 </body>
 </html>
