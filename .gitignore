@@ -19,3 +19,7 @@ data-audit.json
 RV ex1.png
 luac_rv.md
 .ua/
+
+.bql-session.json
+.bql-launcher.lock
+.venv-bql-backup-*/

@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ('luac_data.py', 'peer_data.py', 'xlsx_table.py',
            'scripts/start_bql_preview.py', 'scripts/bloomberg_bridge.py',
            'scripts/probe_bloomberg_luac.py')
-SUPPORT = ('Setup.cmd', 'Start.cmd', 'setup.py', 'README.txt')
+SUPPORT = ('Setup.cmd', 'Start.cmd', 'Reset.cmd', 'Repair.cmd', 'setup.py', 'README.txt')
 
 
 def source_version():

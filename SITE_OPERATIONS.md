@@ -71,6 +71,8 @@ Bloomberg BQL 一鍵診斷仍是唯讀可行性驗證，尚未接正式發布。
 
 正式頁另提供 `downloads/RV-BQL-Launcher.zip`，由 `scripts/build_bql_launcher.py` 以 allowlist 打包純原始碼及 CMD，不含 SDK、執行環境、行情或憑證。使用者解壓縮後執行 Setup.cmd（需要標準版 64 位元 CPython 3.12、3.13 或 3.14），之後每次執行 Start.cmd。獨立啟動器只下載並嚴格驗證網站公開 Peer Group mapping，使用 `--peer-definitions` 交給 bridge；不依賴 repository、Git 或完整公開行情。未取得所需權限時仍失敗，不提供 ReferenceData fallback。
 
+獨立啟動包另含 `Reset.cmd`（驗證本資料夾 token 後停止並重建連線）與 `Repair.cmd`（確認後備份 `.venv-bql` 並重建套件）。Start 重用已驗證的 managed bridge；loopback request 不經代理。關閉 launcher 的 stdin pipe 後 bridge 自行停止，不透過 PID 終止其他程式。舊版或其他資料夾占用 8768 時要求先關閉原服務。`.bql-session.json` 是本機憑證，不得提交或公開。
+
 ### IG Supply 資料
 
 Supply 使用「私人鎖定基準＋未鎖定期間整段替換」。目前版本 `reviewed-20260930-v1` 鎖定至 2026/09/30，YTD 1,678,375,719,000 USD，9月 195,300,000,000 USD，共1,661個發行事件。初始版本 `reviewed-20260925-v1` 鎖定至 2026/09/25，包含1,651個發行事件、YTD 1,646,875,719,000 USD及9月163,800,000,000 USD。兩版均包含JBS原發行與增額拆分，不能以來源列數推斷交易數。Athene等原稽核證據限制保留於私人報告，未為符合外部四捨五入數字改變統計範圍。
