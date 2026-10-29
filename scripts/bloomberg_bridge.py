@@ -5,6 +5,7 @@ import hmac
 import hashlib
 import json
 import os
+import platform
 import subprocess
 import sys
 import threading
@@ -27,6 +28,9 @@ QUALIFICATION_PATH=None
 
 def qualification_version():
     digest=hashlib.sha256((PROVIDER+str(sys.version_info[:2])).encode())
+    # Local binding is hashed only into private approval evidence, never returned.
+    digest.update(str(ROOT.resolve()).encode())
+    digest.update(platform.node().encode())
     for path in (ROOT/'scripts/probe_bloomberg_luac.py',ROOT/'luac_data.py'):
         digest.update(path.read_bytes())
     setup=ROOT/'setup.py'

@@ -27,6 +27,8 @@ class QualificationTests(unittest.TestCase):
             self.assertEqual(set(approval),{'version','passed','date','count','max_oas_diff_bp','max_yield_diff_pct'})
             self.assertNotIn(data['records'][0][0],json.dumps(approval))
             self.assertTrue(bloomberg_bridge.api_qualified(),'survives reconnect/reboot through local evidence')
+            with patch.object(bloomberg_bridge.platform,'node',return_value='different-computer'):
+                self.assertFalse(bloomberg_bridge.api_qualified())
             with patch.object(bloomberg_bridge,'qualification_version',return_value='new-query-version'):
                 self.assertFalse(bloomberg_bridge.api_qualified())
             with patch.object(bloomberg_bridge,'worker',return_value={'passed':False,'error_class':'comparison_failed'}):
