@@ -1,6 +1,7 @@
 from pathlib import Path
 import io
 import json
+import os
 import runpy
 import ssl
 import urllib.error
@@ -24,7 +25,7 @@ class BqlLauncherTests(unittest.TestCase):
             self.assertEqual(package.read_bytes(), build(root/'second.zip').read_bytes())
             with zipfile.ZipFile(package) as archive:
                 names = archive.namelist()
-                self.assertEqual(len(names), 11)
+                self.assertEqual(len(names), 13)
                 self.assertTrue(all(name.startswith('RV-BQL-Launcher/') for name in names))
                 self.assertFalse(any(name.endswith(('.json','.xlsx','.dll','.exe')) for name in names))
                 self.assertNotIn('bbg-token=', '\n'.join(archive.read(name).decode() for name in names if name.endswith('.cmd')))
@@ -93,6 +94,74 @@ class BqlLauncherTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, label):
                         start_bql_preview.main()
                     spawn.assert_not_called()
+
+    def test_start_reuses_authenticated_session_without_mapping_or_spawn(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(start_bql_preview, 'ROOT', Path(directory)), patch.object(sys, 'argv', ['launcher']), patch.object(start_bql_preview, 'port_in_use', return_value=True), patch.object(start_bql_preview, 'read_session', return_value='a'*64), patch.object(start_bql_preview, 'local_request', return_value={'launcher_managed':True,'ready':True,'preview_enabled':True}), patch.object(start_bql_preview.webbrowser, 'open') as browser, patch.object(start_bql_preview, 'bundle_peer_mapping') as mapping, patch.object(start_bql_preview.subprocess, 'Popen') as spawn:
+            start_bql_preview.main()
+            browser.assert_called_once_with(start_bql_preview.SITE+'#bbg-token='+'a'*64)
+            mapping.assert_not_called()
+            spawn.assert_not_called()
+
+    def test_reset_authenticates_and_waits_for_port_release(self):
+        with patch.object(start_bql_preview, 'port_in_use', side_effect=[True,True,False]), patch.object(start_bql_preview, 'read_session', return_value='a'*64), patch.object(start_bql_preview, 'local_request', side_effect=[{'launcher_managed':True},{'stopping':True}]) as request, patch.object(start_bql_preview.time, 'sleep'):
+            self.assertFalse(start_bql_preview.existing_session(reset=True))
+            self.assertEqual(request.call_args_list[1].kwargs, {'stop':True})
+
+    def test_unknown_or_legacy_service_is_never_stopped(self):
+        for status in ({}, {'ready':True}, urllib.error.HTTPError('local',401,'unauthorized',{},None)):
+            with self.subTest(status=status), patch.object(start_bql_preview, 'port_in_use', return_value=True), patch.object(start_bql_preview, 'read_session', return_value='a'*64), patch.object(start_bql_preview, 'local_request', **({'side_effect':status} if isinstance(status,Exception) else {'return_value':status})) as request:
+                with self.assertRaisesRegex(RuntimeError, 'port_in_use'):
+                    start_bql_preview.existing_session(reset=True)
+                request.assert_called_once_with('a'*64)
+
+    def test_loopback_request_explicitly_disables_proxy(self):
+        from unittest.mock import MagicMock
+        response=MagicMock()
+        response.__enter__.return_value=io.BytesIO(b'{"ready":true}')
+        with patch.object(start_bql_preview.urllib.request, 'ProxyHandler') as proxy, patch.object(start_bql_preview.urllib.request, 'build_opener') as opener:
+            opener.return_value.open.return_value=response
+            self.assertEqual(start_bql_preview.local_request('a'*64), {'ready':True})
+            proxy.assert_called_once_with({})
+            self.assertEqual(opener.return_value.open.call_args.args[0].get_header('Authorization'),'Bearer '+'a'*64)
+
+    def test_repair_preserves_previous_environment_before_creating_new_one(self):
+        setup=runpy.run_path(str(Path(__file__).resolve().parents[1]/'bql-launcher/setup.py'))
+        main=setup['main']
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            old=root/'.venv-bql'
+            old.mkdir()
+            (old/'marker').write_text('previous installation')
+            with patch.dict(main.__globals__,{'ROOT':root,'ensure_runtime':lambda:None}), patch.object(setup['venv'],'EnvBuilder') as builder, patch.object(setup['subprocess'],'run'):
+                main(repair=True)
+                builder.return_value.create.assert_called_once_with(old)
+                backups=list(root.glob('.venv-bql-backup-*'))
+                self.assertEqual(len(backups),1)
+                self.assertEqual((backups[0]/'marker').read_text(),'previous installation')
+
+    @unittest.skipUnless(sys.platform == 'win32', 'CMD regression runs in Windows CI')
+    def test_setup_skips_false_success_and_selects_installed_314(self):
+        source=Path(__file__).resolve().parents[1]/'bql-launcher/Setup.cmd'
+        for installation_exit in (0, 1):
+            with self.subTest(installation_exit=installation_exit), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                (root/'Setup.cmd').write_bytes(source.read_bytes())
+                (root/'setup.py').write_text(
+                    "import sys\nfrom pathlib import Path\n"
+                    "if '--check-runtime' in sys.argv: print('Compatible Python 3.14 (Windows x64).')\n"
+                    "else:\n Path('installed').write_text('3.14')\n sys.exit("+str(installation_exit)+")\n")
+                (root/'py.cmd').write_text(
+                    '@echo off\n'
+                    'if not "%~1"=="-3.14" goto missing\n'
+                    '"'+sys.executable+'" "%~2" %3\n'
+                    'exit /b %errorlevel%\n'
+                    ':missing\n'
+                    'echo No runtime installed that matches 3.12\n'
+                    'exit /b 0\n')
+                result=subprocess.run(['cmd','/c','Setup.cmd'], cwd=root, input='\n', capture_output=True,text=True,timeout=30)
+                self.assertTrue((root/'installed').exists(),result.stdout+result.stderr)
+                self.assertEqual(result.returncode,installation_exit,result.stdout+result.stderr)
+                self.assertNotIn('No runtime installed',result.stdout)
 
     def test_standalone_bridge_uses_mapping_without_a_quote_snapshot(self):
         definitions = [{'name':'Banks','tickers':['TK']}]

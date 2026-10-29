@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hmac
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -110,8 +111,21 @@ class Handler(BaseHTTPRequestHandler):
         return True
     def do_GET(self):
         if self.path!='/health': self._json(404,{'error':'not_found'}); return
-        if self.access(): self._json(200,health())
+        if self.access():
+            result=health()
+            if getattr(self.server,'launcher_managed',False): result['launcher_managed']=True
+            self._json(200,result)
     def do_POST(self):
+        if self.path=='/launcher/stop' and getattr(self.server,'launcher_managed',False):
+            if not self.access(): return
+            if self.headers.get('Content-Length')!='2':
+                self._json(400,{'error':'invalid_payload'}); return
+            self.connection.settimeout(5)
+            if self.rfile.read(2)!=b'{}':
+                self._json(400,{'error':'invalid_payload'}); return
+            self._json(200,{'stopping':True})
+            threading.Thread(target=self.server.shutdown,daemon=True).start()
+            return
         if self.path not in ('/probe','/preview'): self._json(404,{'error':'not_found'}); return
         if self.path=='/preview' and (not PREVIEW_ENABLED or self.headers.get('Origin') not in PREVIEW_ORIGINS):
             self._json(403,{'error':'preview_disabled'}); return
@@ -142,12 +156,21 @@ def main():
     p.add_argument('--supported-runtime-confirmed',action='store_true')
     p.add_argument('--enable-preview',action='store_true',help='Allow token-authenticated read-only preview from the RV site or local lab')
     p.add_argument('--peer-definitions',type=Path,help='Validated mapping-only file for standalone launcher')
+    p.add_argument('--launcher-managed',action='store_true',help='Stop on launcher stdin EOF; enable authenticated local stop')
     a=p.parse_args()
     if len(a.token)<32: p.error('token must contain at least 32 characters')
     BQL_PYTHON=a.bql_python; SUPPORTED_RUNTIME_CONFIRMED=a.supported_runtime_confirmed; PROVIDER=a.provider
     PREVIEW_ENABLED=a.enable_preview
     PEER_DEFINITIONS_PATH=a.peer_definitions
     server=ThreadingHTTPServer(('127.0.0.1',a.port),Handler); server.token=a.token
+    server.launcher_managed=a.launcher_managed
+    if a.launcher_managed: server.daemon_threads=True
+    if a.launcher_managed:
+        def watch_launcher():
+            while os.read(sys.stdin.fileno(), 4096):
+                pass
+            server.shutdown()
+        threading.Thread(target=watch_launcher,daemon=True).start()
     print(f'BQL diagnostic bridge: http://127.0.0.1:{a.port}. No publishing endpoints.')
     try: server.serve_forever()
     except KeyboardInterrupt: pass

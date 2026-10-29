@@ -1,40 +1,40 @@
 @echo off
 setlocal
-rem Select installed runtimes only, for both Python launchers. Keep settings local.
 set "PYTHON_MANAGER_AUTOMATIC_INSTALL=false"
 set "PYLAUNCHER_ALLOW_INSTALL="
 set "PYLAUNCHER_ALWAYS_INSTALL="
 set "PYLAUNCHER_DRYRUN="
+set "SETUP_ARGS=%~1"
 cd /d "%~dp0"
+echo Looking for an installed compatible Python...
+if /i "%SETUP_ARGS%"=="--repair" goto systemPython
 if exist ".venv-bql\Scripts\python.exe" (
-  ".venv-bql\Scripts\python.exe" setup.py --check-runtime >nul 2>&1
-  if not errorlevel 1 (
-    ".venv-bql\Scripts\python.exe" setup.py
-    goto finished
-  )
-  echo Existing BQL environment is incompatible. Extract the launcher into a new folder and run Setup.cmd again.
-  pause
-  exit /b 1
+  call :tryPython ".venv-bql\Scripts\python.exe"
+  if not errorlevel 1 goto finished
 )
-for %%V in (3.12 3.13 3.14) do (
-  py -%%V setup.py --check-runtime >nul 2>&1
-  if not errorlevel 1 (
-    py -%%V setup.py
-    goto finished
-  )
+:systemPython
+call :tryPython py
+if not errorlevel 1 goto finished
+for %%V in (3.14 3.13 3.12) do (
+  call :tryPython py -%%V
+  if not errorlevel 1 goto finished
 )
 for %%P in (python python3) do (
-  %%P setup.py --check-runtime >nul 2>&1
-  if not errorlevel 1 (
-    %%P setup.py
-    goto finished
-  )
+  call :tryPython %%P
+  if not errorlevel 1 goto finished
 )
 echo No compatible Python found. Install standard 64-bit CPython 3.12, 3.13 or 3.14 for Windows x64.
 pause
 exit /b 1
+:tryPython
+rem Some Python managers return success even when no runtime exists: require our sentinel.
+call %* setup.py --check-runtime %SETUP_ARGS% 2>nul | findstr /b /c:"Compatible Python " >nul
+if errorlevel 1 exit /b 1
+call %* setup.py %SETUP_ARGS%
+rem A selected runtime failure must not trigger another package installation.
+set "SETUP_RESULT=%errorlevel%"
+exit /b 0
 :finished
-set "setupResult=%errorlevel%"
-if not "%setupResult%"=="0" echo Setup failed. Check the error above and company network access. No other Python version was installed.
+if not "%SETUP_RESULT%"=="0" echo Setup failed. Check network access and the error above. Run Repair.cmd if needed.
 pause
-exit /b %setupResult%
+exit /b %SETUP_RESULT%

@@ -1,6 +1,7 @@
 """Explicit first-run setup; installs into this extracted folder only."""
 from pathlib import Path
 import platform
+import uuid
 import argparse
 import struct
 import sysconfig
@@ -23,11 +24,15 @@ def ensure_runtime():
                            'See https://www.python.org/downloads/windows/')
 
 
-def main():
+def main(repair=False):
     ensure_runtime()
     print('Using Python '+sys.version.split()[0]+' (Windows x64).', flush=True)
     print('Setting up a local BQL environment. No market query will be sent.', flush=True)
     environment = ROOT / '.venv-bql'
+    if repair and environment.exists():
+        backup = ROOT / ('.venv-bql-backup-' + uuid.uuid4().hex[:12])
+        environment.rename(backup)
+        print('Previous environment preserved in a local backup folder.', flush=True)
     if not (environment/'Scripts/python.exe').is_file():
         venv.EnvBuilder(with_pip=True).create(environment)
     python = str(environment/'Scripts/python.exe')
@@ -50,12 +55,15 @@ if __name__ == '__main__':
     try:
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument('--check-runtime', action='store_true')
+        parser.add_argument('--repair', action='store_true')
         args = parser.parse_args()
         if args.check_runtime:
             ensure_runtime()
+            if args.repair and Path(sys.prefix).resolve() == (ROOT / '.venv-bql').resolve():
+                raise RuntimeError('Repair requires a system Python outside this environment.')
             print('Compatible Python '+sys.version.split()[0]+' (Windows x64).')
         else:
-            main()
+            main(repair=args.repair)
     except Exception as error:
         print(f'Setup stopped: {error}', file=sys.stderr)
         sys.exit(1)

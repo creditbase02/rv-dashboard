@@ -144,3 +144,26 @@ marked critical`, the launcher retries once with only `VERIFY_X509_STRICT` remov
 CA chain, hostname and certificate validity checks remain enabled. Other TLS
 errors fail without this fallback; a failed retry is not retried again. This does
 not establish Bloomberg permissions or approve API/Excel data equivalence.
+
+## Connection reset and installation repair
+
+After reboot, log into Bloomberg and run Start.cmd; Setup is needed only for
+initial installation. Start reopens an authenticated managed session from the
+same extracted folder. Reset.cmd stops that session through a token-authenticated,
+origin-checked local endpoint and starts a new token/session. Repair.cmd asks for
+confirmation, stops that session, preserves the previous environment in a backup
+folder, then rebuilds packages using a compatible system Python.
+
+A per-folder OS file lock serializes startup/reset. The managed bridge watches a
+stdin pipe and stops on launcher exit, including window closure. Loopback health
+and control requests bypass proxies; public HTTPS mapping requests retain TLS
+verification and the documented narrow CA fallback. Session tokens stay in the
+local ignored .bql-session.json and are excluded from the ZIP allowlist.
+
+Legacy launchers and other services are never killed by PID. If an unrecognized
+service owns 8768, close its original launcher (or reboot to clear an old orphan)
+before using the new version. Reuse/reset works only for the same extracted folder;
+keep the original launcher window open while using a reused connection. Reset
+opens a new page; old tabs carry the previous token. No reset performs a market
+query or publishes data. Repair needs network access and leaves the backup intact
+if package installation fails.
