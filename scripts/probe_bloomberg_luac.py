@@ -112,7 +112,7 @@ def compare(candidate, baseline):
     ids_match=set(new)==set(old); common=set(new)&set(old)
     max_oas=max((abs(new[k][7]-old[k][7]) for k in common),default=None)
     max_yield=max((abs(new[k][8]-old[k][8]) for k in common),default=None)
-    static=sum(any(new[k][i]!=old[k][i] for i in (1,2,3,4,5)) for k in common)
+    static=sum(any(new[k][i]!=old[k][i] for i in (1,2,3,4,5)) or abs(new[k][6]-old[k][6])>1e-8 for k in common)
     industry=sum(new[k][9]!=old[k][9] for k in common)
     dates=candidate['date']==baseline['date']
     oas_ok=max_oas is not None and max_oas<=0.5

@@ -131,7 +131,9 @@ def build() -> tuple[Path, dict]:
     )
     update_page = (ROOT / "update.template.html").read_text(encoding="utf-8").replace("{{UPDATE_VERSION}}", update_version)
     bonds_template = (ROOT / "bonds.template.html").read_text(encoding="utf-8")
-    luac_version = f"{luac['date']}-{asset_version(ROOT / 'assets' / 'luac-bonds.json', ROOT / 'assets' / 'bonds.js', ROOT / 'assets' / 'luac-model.js')}"
+    luac_version = f"{luac['date']}-{asset_version(ROOT / 'assets' / 'luac-bonds.json', ROOT / 'assets' / 'bonds.js', ROOT / 'assets' / 'luac-model.js', ROOT / 'assets' / 'bql-update.js', ROOT / 'assets' / 'bql-update.css')}"
+    from scripts.build_bql_launcher import source_version
+    bonds_template = bonds_template.replace("{{LAUNCHER_VERSION}}", source_version())
     bonds_page = bonds_template.replace("{{LUAC_DATE_ISO}}", luac["date"]).replace("{{LUAC_DATE_DISPLAY}}", luac["date"].replace("-", "/")).replace("{{LUAC_VERSION}}", luac_version)
     supply_version = f"{supply['date']}-{asset_version(ROOT / 'assets' / 'supply-data.json', ROOT / 'assets' / 'supply-model.js', ROOT / 'assets' / 'supply.js', ROOT / 'assets' / 'supply.css')}"
     supply_page = (ROOT / "supply.template.html").read_text(encoding="utf-8").replace("{{SUPPLY_DATE_ISO}}", supply["date"]).replace("{{SUPPLY_DATE_DISPLAY}}", supply["date"].replace("-", "/")).replace("{{SUPPLY_VERSION}}", supply_version).replace("{{FORECAST_VERSION}}", forecast_version).replace("{{FORECAST_MANIFEST_URL}}", forecast_manifest_url)
@@ -140,7 +142,7 @@ def build() -> tuple[Path, dict]:
     try:
         assets = temporary / "assets"
         assets.mkdir()
-        for name in ("site.css", "rv.css", "rv.js", "bonds.css", "bonds.js", "luac-model.js", "supply.css", "supply.js", "supply-model.js", "forecast.css", "forecast.js", "forecast-model.js", "update.css", "update.js", "upload-config.json", "rv-data.json", "luac-bonds.json", "supply-data.json"):
+        for name in ("site.css", "rv.css", "rv.js", "bonds.css", "bonds.js", "bql-update.js", "bql-update.css", "luac-model.js", "supply.css", "supply.js", "supply-model.js", "forecast.css", "forecast.js", "forecast-model.js", "update.css", "update.js", "upload-config.json", "rv-data.json", "luac-bonds.json", "supply-data.json"):
             shutil.copy2(ROOT / "assets" / name, assets / name)
         (temporary / "index.html").write_text(page, encoding="utf-8")
         (temporary / "update.html").write_text(update_page, encoding="utf-8")

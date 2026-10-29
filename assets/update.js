@@ -459,6 +459,9 @@
   async function initializeBloombergBridge(){
     if(!bridgeToken)return;
     bloombergPanel.hidden=false;
+    document.querySelector('.luac-upload').scrollIntoView({block:'start'});
+    const returnLink=document.getElementById('api-return');
+    if(returnLink)returnLink.href=`bonds.html#bbg-token=${encodeURIComponent(bridgeToken)}`;
     try{const health=await bridgeRequest('/health');if(!health.ready)throw Error(bloombergError(health.error_class));state.bridgeReady=true;setStatus(bloombergStatus,'success','本機 BQL 環境可供測試；尚未驗證登入、欄位權限及查詢結果。');refreshLuacActions();}
     catch(error){state.bridgeReady=false;setStatus(bloombergStatus,'error',`BQL 環境未就緒：${error.message||String(error)}`);refreshLuacActions();}
   }
@@ -473,7 +476,7 @@
       const result=await bridgeRequest('/probe',{method:'POST',body:JSON.stringify({data:baseline})});if(state.luacData!==comparisonSource){setStatus(bloombergStatus,'neutral','比較資料已變更，請重新診斷。');return;}bloombergSummary.replaceChildren();
       for(const [label,value] of [['連線',result.connected?'成功':'失敗'],['單券 BQL',result.reference_ok?'通過':'失敗'],['Universe',result.universe_ok?'通過':'失敗'],['成分筆數',Number(result.count||0).toLocaleString('en-US')],['欄位覆蓋',`${result.required_field_coverage_pct??0}%`],['ID 集合',result.ids_match?'一致':'不一致'],['BICS Level 1',result.industry_match?'一致':'不一致'],['靜態欄位差異',Number(result.static_mismatch_count||0).toLocaleString('en-US')],['產業差異',Number(result.industry_mismatch_count||0).toLocaleString('en-US')],['最大 OAS 差異',Number.isFinite(result.max_oas_diff_bp)?`${result.max_oas_diff_bp} bp`:'n.a.'],['最大 Yield 差異',Number.isFinite(result.max_yield_diff_pct)?`${result.max_yield_diff_pct} pct pt`:'n.a.']])bloombergSummary.append(summaryItem(label,value));
       bloombergSummary.append(summaryItem('行情日期',result.date_match===true?'一致':'未通過或尚未取得'));
-      bloombergSummary.hidden=false;setStatus(bloombergStatus,result.passed?'success':'error',result.passed?'BQL 一鍵唯讀取數及比對通過；尚未接發布，本次未建立 PR。':`診斷未通過：${bloombergError(result.error_class)}`);
+      bloombergSummary.hidden=false;setStatus(bloombergStatus,result.passed?'success':'error',result.passed?(result.api_qualified?'BQL 比對通過，已記住本機資格。回到單券頁即可使用 API 更新；本次比對未發布資料。':'BQL 比對通過；請下載新版啟動器以保存一次性比對結果。'):`診斷未通過：${bloombergError(result.error_class)}`);
     }catch(error){setStatus(bloombergStatus,'error',`Bloomberg API 診斷失敗：${error.message||String(error)}`);}
     finally{state.bqlProbeRunning=false;refreshLuacActions();}
   }

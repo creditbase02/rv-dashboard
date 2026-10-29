@@ -378,7 +378,7 @@ async function publishData(env, data, definition) {
         title: `${production ? 'Update' : '[PREVIEW] Validate'} ${definition.name} data to ${data.date}`,
         head: branch,
         base,
-        body: `${production ? 'Automated' : 'Preview'} sanitized Excel update.\n\n- Mode: ${production ? 'production' : 'preview — never auto-merge'}\n- Data date: ${data.date}\n- ${definition.summary(validation)}\n- SHA-256: \`${digest}\`\n- Validation: PASS`,
+        body: `${production ? 'Automated' : 'Preview'} sanitized data update.\n\n- Mode: ${production ? 'production' : 'preview — never auto-merge'}\n- Data date: ${data.date}\n- ${definition.summary(validation)}\n- SHA-256: \`${digest}\`\n- Validation: PASS`,
       }),
     }, token);
     await addAutomationLabel(env, repo, pr.number, token, label);

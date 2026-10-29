@@ -27,6 +27,8 @@ class BqlLabBuildTests(unittest.TestCase):
         parser = Ids(); parser.feed(page)
         self.assertEqual(len(parser.ids),len(set(parser.ids)))
         self.assertIn('fetch-snapshot',parser.ids)
+        self.assertNotIn('api-publish',parser.ids)
+        self.assertNotIn('assets/bql-update.js',page)
         self.assertIn('bond-canvas',parser.ids)
         viewer = (dist/'assets/bql-viewer.js').read_text(encoding='utf-8')
         self.assertNotIn('assets/luac-bonds.json',viewer)

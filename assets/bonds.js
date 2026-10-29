@@ -311,6 +311,19 @@
   canvas.addEventListener('wheel',event=>{event.preventDefault();const rect=canvas.getBoundingClientRect(),fx=(event.clientX-rect.left)/rect.width,fy=(event.clientY-rect.top)/rect.height,domain=state.domain,factor=event.deltaY>0?1.16:.86,x=domain.xMin+fx*(domain.xMax-domain.xMin),y=domain.yMax-fy*(domain.yMax-domain.yMin),xSpan=(domain.xMax-domain.xMin)*factor,ySpan=(domain.yMax-domain.yMin)*factor;state.domain=constrainedDomain({xMin:x-fx*xSpan,xMax:x+(1-fx)*xSpan,yMin:y-(1-fy)*ySpan,yMax:y+fy*ySpan});draw();},{passive:false});
   document.addEventListener('click',event=>{if(!event.target.closest('#canvas-wrap')&&!event.target.closest('#bond-tooltip')&&!event.target.closest('#bond-rows'))hideTooltip(true);});document.addEventListener('keydown',event=>{if(event.key==='Escape')hideTooltip(true);});window.addEventListener('resize',()=>draw());
 
+  window.LuacExplorer = {
+    load(data) {
+      const bonds = model.validateSnapshot(data);
+      state.date=data.date;state.bonds=bonds;state.page=1;
+      state.selectedBond=null;state.pinned=false;hideTooltip(true);
+      elements['bond-search'].value='';elements['show-outliers'].checked=false;
+      elements['show-curves'].checked=true;state.metric='yield_pct';
+      document.querySelector('[name=bond-metric][value=yield_pct]').checked=true;
+      document.querySelectorAll('[data-list-search]').forEach(input=>{input.value='';});
+      elements['bond-total'].textContent=`${bonds.length.toLocaleString('en-US')} 檔債券`;
+      initializeFilters();render();
+    }
+  };
   const version=document.querySelector('.bond-date time')?.dataset.version||Date.now();
-  fetch(`assets/luac-bonds.json?v=${encodeURIComponent(version)}`,{cache:'no-store'}).then(response=>{if(!response.ok)throw Error(`HTTP ${response.status}`);return response.json();}).then(data=>{state.date=data.date;state.bonds=model.validateSnapshot(data);elements['bond-total'].textContent=`${state.bonds.length.toLocaleString('en-US')} 檔債券`;initializeFilters();render();}).catch(error=>{elements['bond-status'].textContent=`資料暫時無法載入：${error.message}`;});
+  window.LuacExplorer.ready=fetch(`assets/luac-bonds.json?v=${encodeURIComponent(version)}`,{cache:'no-store'}).then(response=>{if(!response.ok)throw Error(`HTTP ${response.status}`);return response.json();}).then(data=>{window.LuacExplorer.load(data);return data;}).catch(error=>{elements['bond-status'].textContent=`資料暫時無法載入：${error.message}`;return null;});
 })();

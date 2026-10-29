@@ -19,6 +19,8 @@ def build(output=None, production=False):
     page = re.sub(r'^.*rel="canonical".*\n', '', page, flags=re.M)
     page = re.sub(r'^.*<header class="site-header">.*\n', '', page, flags=re.M)
     page = re.sub(r'^.*<div class="bond-heading">.*\n', '', page, flags=re.M)
+    page = re.sub(r'<!-- API_UPDATE_START -->.*?<!-- API_UPDATE_END -->', '', page, flags=re.S)
+    page = re.sub(r'^.*bql-update\.(?:js|css).*\n', '', page, flags=re.M)
     page = re.sub(r'^.*<footer class="site-footer">.*\n', '', page, flags=re.M)
     page = page.replace('<title>單券相對價值比較表</title>', '<title>RV Lab｜BQL 單券測試站</title>')
     page = page.replace('{{LUAC_VERSION}}', 'lab-v1')
@@ -32,7 +34,7 @@ def build(output=None, production=False):
         intro = intro.replace('Launcher.zip" download=', f'Launcher.zip?v={package_version}" download=')
         page = page.replace('RV Lab｜BQL 單券測試站', 'BQL API 預覽｜單券相對價值')
         intro = intro.replace('LOCAL TEST', 'API PREVIEW').replace('API 測試工作台', 'API 預覽工作台')
-        intro += '<p class="lab-review-note"><a href="update.html">原有 Excel 更新入口 ↗</a> · <a href="https://github.com/creditbase02/rv-dashboard/blob/main/BQL_DIAGNOSTICS.md" target="_blank" rel="noreferrer">進階設定與診斷說明 ↗</a></p>'
+        intro += '<p class="lab-review-note"><a href="bonds.html">前往正式 API 更新 ↗</a> · <a href="update.html">原有 Excel 更新入口 ↗</a> · <a href="https://github.com/creditbase02/rv-dashboard/blob/main/BQL_DIAGNOSTICS.md" target="_blank" rel="noreferrer">進階設定與診斷說明 ↗</a></p>'
     main = '<main id="main-content" class="bond-shell">'
     page = page.replace(main, main + intro + '<div id="explorer" hidden>')
     page = page.replace('</main>', '</div></main>')
