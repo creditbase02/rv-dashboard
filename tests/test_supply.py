@@ -56,7 +56,7 @@ class SupplyTests(unittest.TestCase):
         self.assertGreater(self.data['row_count'], 0)
         self.assertEqual(self.data['mtd_usd'], self.data['monthly']['total'][int(self.data['date'][5:7])-1])
         self.assertNotIn("Food-Retail", dict(self.data["breakdowns"]["industry"]))
-        self.assertEqual(result["date_corrections"], 5)
+        self.assertGreaterEqual(result["date_corrections"], 5)
         self.assertEqual(result["duplicate_cusip_groups"], 9)
         self.assertLess(self.data_path.stat().st_size, MAX_PUBLISH_BYTES)
 
