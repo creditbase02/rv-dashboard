@@ -104,7 +104,7 @@ def make_fixture(output: Path, variant: str = "valid") -> tuple[Path, Path]:
     elif variant == "pending-id":
         records[0][0] = None
         records[0][1] = 1
-        records[0][4] = "10/01/26"
+        records[0][4] = "11/02/26"
     elif variant == "cusip-only-locked":
         records[0][0] = None
         records[0][4] = "09/30/26"

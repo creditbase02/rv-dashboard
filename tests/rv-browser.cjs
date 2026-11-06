@@ -567,9 +567,9 @@ async function runValidSupplyUpload(browser,base,width,fixture,usePeer=true,asOf
   await page.locator('#supply-validation-status.success').waitFor();
   assert.equal(await page.locator('#supply-summary-date').innerText(),fixture.snapshot.date);
   assert.equal(await page.locator('#supply-summary-count').innerText(),fixture.snapshot.row_count.toLocaleString('en-US'));
-  assert.equal(await page.locator('#supply-summary-corrections').innerText(),'5');
+  assert.equal(await page.locator('#supply-summary-corrections').innerText(),String(fixture.snapshot.quality.date_corrections));
   assert.equal(await page.locator('#supply-summary-duplicates').innerText(),String(fixture.snapshot.quality.duplicate_cusip_groups));
-  assert.match(await page.locator('#supply-lock-status').innerText(),/2026-09-30/);
+  assert.ok((await page.locator('#supply-lock-status').innerText()).includes(fixture.snapshot.lock.through));
   assert.match(await page.locator('#supply-file-name').innerText(),/已從程式狀態釋放/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${width}/supply uploader overflow`);
   await page.locator('#supply-upload-password').fill('company password');
@@ -777,8 +777,8 @@ if(require.main===module) (async()=>{
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'valid',expectedLuacDate,25),/超過 ±20%/,currentLuacDate);
     const supplyValid=supplyFixture(temporary);
     for(const width of [1440,768,375])await runValidSupplyUpload(browser,base,width,supplyValid,width!==375);
-    await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'pending-id'),false,'2026-10-01');
-    await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'cusip-only-locked'),false,'2026-09-30');
+    await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'pending-id'),false,'2026-11-02');
+    await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'cusip-only-locked'),false,supplyValid.snapshot.lock.through);
     for(const [variant,message] of [['missing-column',/必須且只能有一個工作表/],['formula',/不可使用公式/],['missing-locked-identifiers',/同時缺少有效 BB ID 與 CUSIP/]]){
       const invalid=supplyFixture(temporary,variant);
       await runInvalidSupplyUpload(browser,base,invalid,message,supplyValid.snapshot);
