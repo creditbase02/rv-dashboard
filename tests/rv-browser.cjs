@@ -557,6 +557,33 @@ function supplyFixture(root,variant='valid'){
   return {workbook,peers,snapshot};
 }
 
+async function runSupplyNetworkRecovery(browser,base,fixture,mode){
+  const {context,page,requests}=await openUploader(browser,base,fixture.snapshot.date,1440,'2026-09-15',40,false,fixture.snapshot);
+  const counts={session:0,validate:0};
+  for(const [path,key] of [['/session','session'],['/validate/supply','validate']]){
+    await page.route(`https://rv-upload-service.example.workers.dev${path}`,async route=>{
+      counts[key]++;
+      if(mode==='rejected'&&key==='validate')return route.fulfill({status:400,json:{error:'待核對發行事件'}});
+      if(mode==='offline'&&key==='validate'||mode==='recover'&&counts[key]===1)return route.abort('failed');
+      return route.fallback();
+    });
+  }
+  await page.locator('#supply-file').setInputFiles(fixture.workbook);
+  await page.locator('#supply-as-of').fill(fixture.snapshot.date);
+  await page.locator('#supply-complete').check();
+  await page.locator('#supply-upload-password').fill('test password');
+  await page.locator('#validate-supply').click();
+  await page.locator(`#supply-validation-status.${mode==='recover'?'success':'error'}`).waitFor();
+  if(mode==='recover')assert.deepEqual(counts,{session:2,validate:2});
+  else{
+    assert.deepEqual(counts,{session:1,validate:mode==='offline'?2:1});
+    assert.match(await page.locator('#supply-validation-status').innerText(),mode==='offline'?/鎖定基準核對連線失敗.*已重試一次/:/待核對發行事件/);
+    assert.equal(await page.locator('#publish-supply').isDisabled(),true);
+  }
+  assert.equal(requests.some(r=>r.url.endsWith('/publish/supply')),false,'validation must never publish');
+  await context.close();
+}
+
 async function runValidSupplyUpload(browser,base,width,fixture,usePeer=true,asOf=fixture.snapshot.date){
   const {context,page,requests}=await openUploader(browser,base,fixture.snapshot.date,width,'2026-09-15',40,false,fixture.snapshot);
   await page.locator('#supply-file').setInputFiles(fixture.workbook);
@@ -776,6 +803,7 @@ if(require.main===module) (async()=>{
     await runBloombergDiagnostic(browser,base,luacFixture(temporary,'bql',currentLuacDate),currentLuacDate);
     await runInvalidLuacUpload(browser,base,luacFixture(temporary,'valid',expectedLuacDate,25),/超過 ±20%/,currentLuacDate);
     const supplyValid=supplyFixture(temporary);
+    for(const mode of ['recover','offline','rejected'])await runSupplyNetworkRecovery(browser,base,supplyValid,mode);
     for(const width of [1440,768,375])await runValidSupplyUpload(browser,base,width,supplyValid,width!==375);
     await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'pending-id'),false,'2026-11-02');
     await runValidSupplyUpload(browser,base,1440,supplyFixture(temporary,'cusip-only-locked'),false,supplyValid.snapshot.lock.through);
