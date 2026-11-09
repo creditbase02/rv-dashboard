@@ -4,7 +4,7 @@ const {readFileSync}=require('node:fs');
 const base=process.argv.slice(2).find(arg=>arg!=='--')||'http://127.0.0.1:8766/';
 const source=JSON.parse(readFileSync('assets/luac-bonds.json','utf8'));
 const current={...source,records:source.records.slice(0,80)};
-const candidate={...current,date:'2026-10-28'};
+const candidate={...current,date:current.date};
 const token='c'.repeat(64),service='https://rv-upload-service.rv-dashboard.workers.dev';
 (async()=>{
  const browser=await chromium.launch();
@@ -46,7 +46,7 @@ const token='c'.repeat(64),service='https://rv-upload-service.rv-dashboard.worke
    assert.match(await page.locator('#api-qualification-status').innerText(),/尚未完成/);
    assert.equal(await page.locator('#api-qualification').getAttribute('href'),'update.html#bbg-token='+token);
    await page.locator('#api-fetch').click();await page.locator('#api-status.success').waitFor();
-   assert.equal(queries,1);assert.equal(await page.locator('#api-date').innerText(),'2026-10-28');
+   assert.equal(queries,1);assert.equal(await page.locator('#api-date').innerText(),candidate.date);
    await page.locator('#api-confirm').check();await page.locator('#api-password').fill('test-password');
    assert.equal(await page.locator('#api-publish').isDisabled(),true,'unqualified API cannot publish');
    qualified=true;
@@ -54,7 +54,7 @@ const token='c'.repeat(64),service='https://rv-upload-service.rv-dashboard.worke
    failQuery=true;
    await page.locator('#api-fetch').click();await page.locator('#api-status.error').waitFor();
    assert.match(await page.locator('#api-status').innerText(),/保留先前資料/);
-   assert.equal(await page.locator('.bond-date time').innerText(),'2026/10/28');
+   assert.equal(await page.locator('.bond-date time').innerText(),candidate.date.replaceAll('-','/'));
    assert.equal(await page.locator('#api-confirm').isChecked(),false);
    assert.equal(await page.locator('#api-publish').isDisabled(),true);
    assert.equal(queries,2,'failed market queries never retry');

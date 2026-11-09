@@ -358,9 +358,10 @@
     try{
       const secret=supplyPassword.value;
       if(!secret&&!state.token)throw Error('請先輸入上傳密碼，才能核對私人鎖定基準');
-      if(secret){const session=await api('/session',{method:'POST',body:JSON.stringify({password:secret})});state.token=session.token;supplyPassword.value='';}
+      if(secret){const session=await supplyCheckApi('/session',{password:secret},'登入');state.token=session.token;supplyPassword.value='';}
       const upload=await parseSupplyWorkbook(file);
-      const preview=await api('/validate/supply',{method:'POST',body:JSON.stringify({data:upload})});
+      setStatus(supplyValidationStatus,'neutral','Excel 已解析，正在連線核對鎖定基準…');
+      const preview=await supplyCheckApi('/validate/supply',{data:upload},'鎖定基準核對');
       const data=window.SupplyModel.validateSnapshot(preview.data);state.supplyUpload=upload;
       if(state.currentSupply&&data.date<state.currentSupply.date)throw Error(`資料日期 ${data.date} 早於正式站 ${state.currentSupply.date}`);
       if(state.currentSupply){for(const [field,label] of [['row_count','筆數'],['ytd_usd','YTD 發行量']]){const ratio=data[field]/state.currentSupply[field];if(ratio<.8||ratio>1.2)throw Error(`Supply ${label}變動超過 ±20%，需走人工 PR`);}}
@@ -375,6 +376,21 @@
     const body=await response.json().catch(()=>({error:`HTTP ${response.status}`}));
     if(!response.ok)throw Error(body.error||`HTTP ${response.status}`);
     return body;
+  }
+  // These two operations do not publish or change the locked baseline.
+  // Limit retries to transport failures; never retry a rejected password/data.
+  async function supplyCheckApi(path,payload,stage){
+    const body=JSON.stringify(payload);
+    for(let attempt=0;attempt<2;attempt++){
+      try{return await api(path,{method:'POST',body,signal:AbortSignal.timeout(45000)});}
+      catch(error){
+        const transport=error instanceof TypeError||['TimeoutError','AbortError'].includes(error.name);
+        if(!transport)throw error;
+        if(attempt===1)throw Error(`Supply ${stage}連線失敗（${path}），已重試一次；資料未發布。請重新載入後再試；若仍失敗，請提供這段訊息以檢查公司網路攔截。`);
+        setStatus(supplyValidationStatus,'neutral',`Supply ${stage}連線中斷，正在重試一次…`);
+        await new Promise(resolve=>setTimeout(resolve,1500));
+      }
+    }
   }
   async function publishApi(path,data,onRetry){
     for(let attempt=0;attempt<3;attempt++){
