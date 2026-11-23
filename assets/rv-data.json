@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-06",
+  "date": "2026-11-20",
   "horizon": "2Y",
   "sections": {
     "Overview": {
@@ -14,10 +14,10 @@
             "pct": "Excel"
           },
           "min": 81.53,
-          "median": 93.475,
+          "median": 91.9,
           "max": 126.69,
-          "current": 103.97,
-          "pct": 0.822
+          "current": 108.03,
+          "pct": 0.935
         },
         {
           "sector": "Fin",
@@ -29,10 +29,10 @@
             "pct": "Excel"
           },
           "min": 79.3,
-          "median": 92.9,
+          "median": 90.9,
           "max": 131.2,
-          "current": 101.5,
-          "pct": 0.721
+          "current": 104.6,
+          "pct": 0.911
         },
         {
           "sector": "Non-Fin",
@@ -44,10 +44,10 @@
             "pct": "Excel"
           },
           "min": 82.95,
-          "median": 94.785,
+          "median": 92.94,
           "max": 127.13,
-          "current": 105.36,
-          "pct": 0.834
+          "current": 109.98,
+          "pct": 0.937
         },
         {
           "sector": "AA",
@@ -60,9 +60,9 @@
           },
           "min": 49.3,
           "median": 62,
-          "max": 93.1,
-          "current": 91.3,
-          "pct": 0.99
+          "max": 94.9,
+          "current": 94.9,
+          "pct": 0.997
         },
         {
           "sector": "A",
@@ -74,10 +74,10 @@
             "pct": "Excel"
           },
           "min": 67.9,
-          "median": 80,
+          "median": 78.8,
           "max": 110.7,
-          "current": 86.9,
-          "pct": 0.751
+          "current": 90.5,
+          "pct": 0.911
         },
         {
           "sector": "BBB",
@@ -89,10 +89,10 @@
             "pct": "Excel"
           },
           "min": 101.6,
-          "median": 114.15,
+          "median": 112.5,
           "max": 153.2,
-          "current": 126.7,
-          "pct": 0.797
+          "current": 131.8,
+          "pct": 0.937
         }
       ],
       "10Y": [
@@ -106,10 +106,10 @@
             "pct": "Excel"
           },
           "min": 83.79,
-          "median": 96.715,
+          "median": 94.95,
           "max": 134.32,
-          "current": 108.72,
-          "pct": 0.772
+          "current": 112.99,
+          "pct": 0.935
         },
         {
           "sector": "Fin",
@@ -121,10 +121,10 @@
             "pct": "Excel"
           },
           "min": 89.7,
-          "median": 105.285,
+          "median": 103.16,
           "max": 147.25,
-          "current": 115.36,
-          "pct": 0.703
+          "current": 118.41,
+          "pct": 0.911
         },
         {
           "sector": "Non-Fin",
@@ -136,10 +136,10 @@
             "pct": "Excel"
           },
           "min": 82.2,
-          "median": 94.265,
+          "median": 92.66,
           "max": 129.41,
-          "current": 106.99,
-          "pct": 0.845
+          "current": 112.1,
+          "pct": 0.945
         },
         {
           "sector": "AA",
@@ -151,10 +151,10 @@
             "pct": "Excel"
           },
           "min": 48.36,
-          "median": 58.495000000000005,
+          "median": 57.9,
           "max": 85.44,
-          "current": 79.71,
-          "pct": 0.981
+          "current": 82.21,
+          "pct": 0.991
         },
         {
           "sector": "A",
@@ -166,10 +166,10 @@
             "pct": "Excel"
           },
           "min": 71.22,
-          "median": 84.5,
+          "median": 82.71,
           "max": 118.35,
-          "current": 94.28,
-          "pct": 0.768
+          "current": 97.99,
+          "pct": 0.933
         },
         {
           "sector": "BBB",
@@ -181,10 +181,10 @@
             "pct": "Excel"
           },
           "min": 102.1,
-          "median": 114.44,
+          "median": 112.64,
           "max": 155.25,
-          "current": 130.4,
-          "pct": 0.837
+          "current": 136.05,
+          "pct": 0.945
         }
       ],
       "30Y": [
@@ -198,10 +198,10 @@
             "pct": "Excel"
           },
           "min": 87.92,
-          "median": 102.75999999999999,
+          "median": 101.01,
           "max": 134.37,
-          "current": 111.9,
-          "pct": 0.819
+          "current": 116.34,
+          "pct": 0.933
         },
         {
           "sector": "Fin",
@@ -213,10 +213,10 @@
             "pct": "Excel"
           },
           "min": 83.43,
-          "median": 99.125,
+          "median": 96.85,
           "max": 135.5,
-          "current": 104.61,
-          "pct": 0.663
+          "current": 108.36,
+          "pct": 0.871
         },
         {
           "sector": "Non-Fin",
@@ -228,10 +228,10 @@
             "pct": "Excel"
           },
           "min": 89.36,
-          "median": 104.08500000000001,
+          "median": 102.41,
           "max": 135.53,
-          "current": 113.68,
-          "pct": 0.829
+          "current": 118.47,
+          "pct": 0.935
         },
         {
           "sector": "AA",
@@ -243,10 +243,10 @@
             "pct": "Excel"
           },
           "min": 55.34,
-          "median": 71.515,
-          "max": 110.78,
-          "current": 108.28,
-          "pct": 0.99
+          "median": 72.25,
+          "max": 112.61,
+          "current": 112.61,
+          "pct": 0.997
         },
         {
           "sector": "A",
@@ -258,10 +258,10 @@
             "pct": "Excel"
           },
           "min": 74.31,
-          "median": 87.535,
+          "median": 85.94,
           "max": 117.7,
-          "current": 92.57,
-          "pct": 0.734
+          "current": 96.62,
+          "pct": 0.887
         },
         {
           "sector": "BBB",
@@ -273,10 +273,10 @@
             "pct": "Excel"
           },
           "min": 111.38,
-          "median": 126.58500000000001,
+          "median": 123.67,
           "max": 163.41,
-          "current": 135.79,
-          "pct": 0.746
+          "current": 141.17,
+          "pct": 0.913
         }
       ],
       "10s30s": [
@@ -289,11 +289,11 @@
             "current": "Excel",
             "pct": "Excel"
           },
-          "min": -4.51,
-          "median": 4.265,
+          "min": -4.06,
+          "median": 4.9,
           "max": 10.52,
-          "current": 3.19,
-          "pct": 0.372
+          "current": 3.35,
+          "pct": 0.257
         },
         {
           "sector": "Fin",
@@ -304,11 +304,11 @@
             "current": "Excel",
             "pct": "Excel"
           },
-          "min": -18.04,
-          "median": -7.285,
+          "min": -16.29,
+          "median": -6.8,
           "max": -2.3,
-          "current": -10.76,
-          "pct": 0.166
+          "current": -10.05,
+          "pct": 0.118
         },
         {
           "sector": "Non-Fin",
@@ -320,10 +320,10 @@
             "pct": "Excel"
           },
           "min": 0.04,
-          "median": 8.05,
+          "median": 8.69,
           "max": 15.51,
-          "current": 6.69,
-          "pct": 0.307
+          "current": 6.37,
+          "pct": 0.218
         },
         {
           "sector": "AA",
@@ -335,10 +335,10 @@
             "pct": "Excel"
           },
           "min": 3.21,
-          "median": 11.945,
+          "median": 14.12,
           "max": 31.57,
-          "current": 28.57,
-          "pct": 0.948
+          "current": 30.39,
+          "pct": 0.987
         },
         {
           "sector": "A",
@@ -349,11 +349,11 @@
             "current": "Excel",
             "pct": "Excel"
           },
-          "min": -6.84,
-          "median": 1.83,
+          "min": -5.21,
+          "median": 2.17,
           "max": 8.19,
-          "current": -1.71,
-          "pct": 0.109
+          "current": -1.37,
+          "pct": 0.108
         },
         {
           "sector": "BBB",
@@ -365,10 +365,10 @@
             "pct": "Excel"
           },
           "min": 3.87,
-          "median": 10.32,
+          "median": 10.58,
           "max": 17.85,
-          "current": 5.38,
-          "pct": 0.041
+          "current": 5.12,
+          "pct": 0.026
         }
       ]
     },
@@ -384,10 +384,10 @@
             "pct": "Excel"
           },
           "min": 72.1,
-          "median": 86.19,
+          "median": 84.43,
           "max": 128.97,
-          "current": 93.82,
-          "pct": 0.684
+          "current": 98.32,
+          "pct": 0.899
         },
         {
           "sector": "Yankee Bank",
@@ -399,10 +399,10 @@
             "pct": "Excel"
           },
           "min": 79.68,
-          "median": 96.01,
+          "median": 91.98,
           "max": 136.85,
-          "current": 107.03,
-          "pct": 0.76
+          "current": 107.72,
+          "pct": 0.915
         },
         {
           "sector": "Insurance",
@@ -414,10 +414,10 @@
             "pct": "Excel"
           },
           "min": 85.22,
-          "median": 97.16,
-          "max": 128.9,
-          "current": 103.03,
-          "pct": 0.678
+          "median": 95.59,
+          "max": 123.78,
+          "current": 106.71,
+          "pct": 0.907
         },
         {
           "sector": "M&M",
@@ -429,10 +429,10 @@
             "pct": "Excel"
           },
           "min": 80.36,
-          "median": 100.745,
-          "max": 145.42,
-          "current": 96.93,
-          "pct": 0.414
+          "median": 95.19,
+          "max": 142.97,
+          "current": 107.74,
+          "pct": 0.757
         },
         {
           "sector": "Chemical",
@@ -444,10 +444,10 @@
             "pct": "Excel"
           },
           "min": 96.1,
-          "median": 116.66499999999999,
+          "median": 115.53,
           "max": 151.53,
-          "current": 110.66,
-          "pct": 0.256
+          "current": 115.71,
+          "pct": 0.508
         },
         {
           "sector": "Tech",
@@ -459,10 +459,10 @@
             "pct": "Excel"
           },
           "min": 66.36,
-          "median": 85.52000000000001,
-          "max": 137.24,
-          "current": 137.24,
-          "pct": 0.998
+          "median": 87.9,
+          "max": 142.4,
+          "current": 142.4,
+          "pct": 0.997
         },
         {
           "sector": "Auto",
@@ -474,10 +474,10 @@
             "pct": "Excel"
           },
           "min": 89.64,
-          "median": 107.235,
+          "median": 106.15,
           "max": 171.61,
-          "current": 112.8,
-          "pct": 0.678
+          "current": 121.08,
+          "pct": 0.835
         },
         {
           "sector": "Media",
@@ -489,10 +489,10 @@
             "pct": "Excel"
           },
           "min": 110.57,
-          "median": 140.995,
+          "median": 136.03,
           "max": 198.5,
-          "current": 195.11,
-          "pct": 0.992
+          "current": 196.59,
+          "pct": 0.989
         },
         {
           "sector": "Energy",
@@ -504,10 +504,10 @@
             "pct": "Excel"
           },
           "min": 82.76,
-          "median": 107.365,
+          "median": 104.96,
           "max": 152.31,
-          "current": 93.4,
-          "pct": 0.204
+          "current": 101.48,
+          "pct": 0.381
         },
         {
           "sector": "Capital Good",
@@ -519,10 +519,10 @@
             "pct": "Excel"
           },
           "min": 64.63,
-          "median": 80.28999999999999,
-          "max": 117.89,
-          "current": 77.02,
-          "pct": 0.432
+          "median": 74.94,
+          "max": 114.71,
+          "current": 80.98,
+          "pct": 0.682
         }
       ],
       "10Y": [
@@ -536,10 +536,10 @@
             "pct": "Excel"
           },
           "min": 84.73,
-          "median": 99.125,
+          "median": 96.95,
           "max": 143.62,
-          "current": 105.2,
-          "pct": 0.649
+          "current": 109.42,
+          "pct": 0.853
         },
         {
           "sector": "Yankee Bank",
@@ -551,10 +551,10 @@
             "pct": "Excel"
           },
           "min": 92.58,
-          "median": 114.37,
+          "median": 109.4,
           "max": 164.42,
-          "current": 127.63,
-          "pct": 0.746
+          "current": 127.83,
+          "pct": 0.891
         },
         {
           "sector": "Insurance",
@@ -566,10 +566,10 @@
             "pct": "Excel"
           },
           "min": 93.15,
-          "median": 106.99,
-          "max": 136.74,
-          "current": 120.36,
-          "pct": 0.828
+          "median": 104.46,
+          "max": 133.74,
+          "current": 124.14,
+          "pct": 0.965
         },
         {
           "sector": "M&M",
@@ -581,10 +581,10 @@
             "pct": "Excel"
           },
           "min": 76,
-          "median": 99.33500000000001,
-          "max": 149.31,
-          "current": 100.62,
-          "pct": 0.527
+          "median": 94.34,
+          "max": 142.29,
+          "current": 111.61,
+          "pct": 0.867
         },
         {
           "sector": "Chemical",
@@ -596,10 +596,10 @@
             "pct": "Excel"
           },
           "min": 96.85,
-          "median": 120.15,
+          "median": 118.05,
           "max": 160.06,
-          "current": 122.29,
-          "pct": 0.573
+          "current": 128.89,
+          "pct": 0.839
         },
         {
           "sector": "Tech",
@@ -611,10 +611,10 @@
             "pct": "Excel"
           },
           "min": 71.6,
-          "median": 90.19,
-          "max": 130.8,
-          "current": 130.29,
-          "pct": 0.996
+          "median": 90.67,
+          "max": 135.24,
+          "current": 135.24,
+          "pct": 0.997
         },
         {
           "sector": "Auto",
@@ -626,10 +626,10 @@
             "pct": "Excel"
           },
           "min": 104.59,
-          "median": 123.47999999999999,
+          "median": 121.62,
           "max": 191.83,
-          "current": 141.41,
-          "pct": 0.845
+          "current": 154.61,
+          "pct": 0.937
         },
         {
           "sector": "Media",
@@ -641,10 +641,10 @@
             "pct": "Excel"
           },
           "min": 87.06,
-          "median": 112.565,
-          "max": 186.67,
-          "current": 185.52,
-          "pct": 0.995
+          "median": 110.03,
+          "max": 188.16,
+          "current": 188.16,
+          "pct": 0.997
         },
         {
           "sector": "Energy",
@@ -656,10 +656,10 @@
             "pct": "Excel"
           },
           "min": 84.1,
-          "median": 111.93,
+          "median": 108.29,
           "max": 162.35,
-          "current": 99.3,
-          "pct": 0.231
+          "current": 107.57,
+          "pct": 0.471
         },
         {
           "sector": "Capital Good",
@@ -671,10 +671,10 @@
             "pct": "Excel"
           },
           "min": 66.69,
-          "median": 82.985,
+          "median": 78.84,
           "max": 122.98,
-          "current": 81.51,
-          "pct": 0.459
+          "current": 85.84,
+          "pct": 0.757
         }
       ],
       "30Y": [
@@ -688,10 +688,10 @@
             "pct": "Excel"
           },
           "min": 74.68,
-          "median": 91.13499999999999,
+          "median": 89.46,
           "max": 135.35,
-          "current": 98.24,
-          "pct": 0.754
+          "current": 103.24,
+          "pct": 0.879
         },
         {
           "sector": "Yankee Bank",
@@ -703,10 +703,10 @@
             "pct": "Excel"
           },
           "min": 96.22,
-          "median": 119.74,
+          "median": 111.95,
           "max": 169.19,
-          "current": 121.89,
-          "pct": 0.551
+          "current": 122.52,
+          "pct": 0.73
         },
         {
           "sector": "Insurance",
@@ -718,10 +718,10 @@
             "pct": "Excel"
           },
           "min": 88.54,
-          "median": 103.005,
-          "max": 134.63,
-          "current": 107.21,
-          "pct": 0.658
+          "median": 101.15,
+          "max": 128.35,
+          "current": 111.35,
+          "pct": 0.879
         },
         {
           "sector": "M&M",
@@ -733,10 +733,10 @@
             "pct": "Excel"
           },
           "min": 84.44,
-          "median": 107.97,
+          "median": 101.32,
           "max": 154.43,
-          "current": 99.5,
-          "pct": 0.341
+          "current": 111.25,
+          "pct": 0.688
         },
         {
           "sector": "Chemical",
@@ -748,10 +748,10 @@
             "pct": "Excel"
           },
           "min": 105.66,
-          "median": 127.565,
+          "median": 125.95,
           "max": 161.7,
-          "current": 118.16,
-          "pct": 0.216
+          "current": 122.92,
+          "pct": 0.401
         },
         {
           "sector": "Tech",
@@ -763,10 +763,10 @@
             "pct": "Excel"
           },
           "min": 70.57,
-          "median": 93.16499999999999,
-          "max": 150.79,
-          "current": 150.49,
-          "pct": 0.995
+          "median": 96.73,
+          "max": 156.09,
+          "current": 156.09,
+          "pct": 0.997
         },
         {
           "sector": "Auto",
@@ -778,10 +778,10 @@
             "pct": "Excel"
           },
           "min": 123.9,
-          "median": 148.365,
+          "median": 144.77,
           "max": 220.42,
-          "current": 143.93,
-          "pct": 0.36
+          "current": 151.78,
+          "pct": 0.702
         },
         {
           "sector": "Media",
@@ -793,10 +793,10 @@
             "pct": "Excel"
           },
           "min": 120.98,
-          "median": 154.19,
+          "median": 149.08,
           "max": 213.44,
-          "current": 207.36,
-          "pct": 0.99
+          "current": 209.36,
+          "pct": 0.991
         },
         {
           "sector": "Energy",
@@ -808,10 +808,10 @@
             "pct": "Excel"
           },
           "min": 89.21,
-          "median": 115.53,
+          "median": 111.81,
           "max": 160.29,
-          "current": 98.28,
-          "pct": 0.154
+          "current": 107,
+          "pct": 0.355
         },
         {
           "sector": "Capital Good",
@@ -823,10 +823,10 @@
             "pct": "Excel"
           },
           "min": 70.96,
-          "median": 88.12,
-          "max": 130.1,
-          "current": 82.74,
-          "pct": 0.391
+          "median": 81.86,
+          "max": 125.04,
+          "current": 86.99,
+          "pct": 0.648
         }
       ],
       "10s30s": [
@@ -839,11 +839,11 @@
             "current": "Excel",
             "pct": "Excel"
           },
-          "min": -25.81,
-          "median": -9.895,
+          "min": -17.36,
+          "median": -8.58,
           "max": -2.82,
-          "current": -6.95,
-          "pct": 0.765
+          "current": -6.18,
+          "pct": 0.773
         },
         {
           "sector": "Yankee Bank",
@@ -855,10 +855,10 @@
             "pct": "Excel"
           },
           "min": -6.31,
-          "median": 5.125,
-          "max": 9.49,
-          "current": -5.75,
-          "pct": 0.003
+          "median": 4.41,
+          "max": 9.19,
+          "current": -5.32,
+          "pct": 0.01
         },
         {
           "sector": "Insurance",
@@ -869,11 +869,11 @@
             "current": "Excel",
             "pct": "Excel"
           },
-          "min": -15.62,
-          "median": -5.02,
+          "min": -14.54,
+          "median": -5.19,
           "max": 6.6,
-          "current": -13.15,
-          "pct": 0.027
+          "current": -12.79,
+          "pct": 0.044
         },
         {
           "sector": "M&M",
@@ -885,10 +885,10 @@
             "pct": "Excel"
           },
           "min": -5.23,
-          "median": 8.35,
+          "median": 9.64,
           "max": 18.1,
-          "current": -1.11,
-          "pct": 0.075
+          "current": -0.36,
+          "pct": 0.064
         },
         {
           "sector": "Chemical",
@@ -900,10 +900,10 @@
             "pct": "Excel"
           },
           "min": -7.78,
-          "median": 6.45,
+          "median": 8.97,
           "max": 19.64,
-          "current": -4.13,
-          "pct": 0.017
+          "current": -5.96,
+          "pct": 0.008
         },
         {
           "sector": "Tech",
@@ -915,10 +915,10 @@
             "pct": "Excel"
           },
           "min": -8.36,
-          "median": 3.11,
+          "median": 6.54,
           "max": 27.6,
-          "current": 20.2,
-          "pct": 0.871
+          "current": 20.85,
+          "pct": 0.841
         },
         {
           "sector": "Auto",
@@ -929,11 +929,11 @@
             "current": "Excel",
             "pct": "Excel"
           },
-          "min": 1.99,
-          "median": 24.205,
+          "min": -2.83,
+          "median": 22.26,
           "max": 37.14,
-          "current": 2.52,
-          "pct": 0.003
+          "current": -2.83,
+          "pct": 0.002
         },
         {
           "sector": "Media",
@@ -945,10 +945,10 @@
             "pct": "Excel"
           },
           "min": 20.92,
-          "median": 36.075,
+          "median": 37.2,
           "max": 57.27,
-          "current": 21.84,
-          "pct": 0.006
+          "current": 21.19,
+          "pct": 0.004
         },
         {
           "sector": "Energy",
@@ -960,10 +960,10 @@
             "pct": "Excel"
           },
           "min": -5.19,
-          "median": 4.015,
+          "median": 4.93,
           "max": 10.61,
-          "current": -1.02,
-          "pct": 0.12
+          "current": -0.58,
+          "pct": 0.182
         },
         {
           "sector": "Capital Good",
@@ -975,10 +975,10 @@
             "pct": "Excel"
           },
           "min": -2.59,
-          "median": 5.335,
+          "median": 4.13,
           "max": 13.63,
-          "current": 1.23,
-          "pct": 0.08
+          "current": 1.15,
+          "pct": 0.096
         }
       ]
     },
@@ -994,10 +994,10 @@
             "pct": "Excel"
           },
           "min": 84.69,
-          "median": 100.715,
+          "median": 98.27,
           "max": 132.92,
-          "current": 127.26,
-          "pct": 0.984
+          "current": 130.92,
+          "pct": 0.991
         },
         {
           "sector": "Utility",
@@ -1009,10 +1009,10 @@
             "pct": "Excel"
           },
           "min": 81.62,
-          "median": 93.315,
-          "max": 126.74,
-          "current": 93.28,
-          "pct": 0.497
+          "median": 90.16,
+          "max": 126.04,
+          "current": 96.26,
+          "pct": 0.755
         },
         {
           "sector": "F&B",
@@ -1024,10 +1024,10 @@
             "pct": "Excel"
           },
           "min": 71.76,
-          "median": 82.35,
+          "median": 81.22,
           "max": 110.38,
-          "current": 85.54,
-          "pct": 0.656
+          "current": 89.09,
+          "pct": 0.873
         },
         {
           "sector": "Tobacco",
@@ -1039,10 +1039,10 @@
             "pct": "Excel"
           },
           "min": 84.22,
-          "median": 102.37,
-          "max": 149.24,
-          "current": 96.75,
-          "pct": 0.383
+          "median": 96.48,
+          "max": 143.05,
+          "current": 102.28,
+          "pct": 0.66
         },
         {
           "sector": "Healthcare",
@@ -1054,10 +1054,10 @@
             "pct": "Excel"
           },
           "min": 70.87,
-          "median": 87.765,
+          "median": 83.13,
           "max": 114.73,
-          "current": 80.9,
-          "pct": 0.304
+          "current": 85.2,
+          "pct": 0.564
         },
         {
           "sector": "Retail",
@@ -1069,10 +1069,10 @@
             "pct": "Excel"
           },
           "min": 64.54,
-          "median": 77.22,
+          "median": 74.26,
           "max": 111.04,
-          "current": 78.35,
-          "pct": 0.547
+          "current": 82.67,
+          "pct": 0.845
         },
         {
           "sector": "Transportation",
@@ -1084,10 +1084,10 @@
             "pct": "Excel"
           },
           "min": 68.01,
-          "median": 83.44,
+          "median": 79.2,
           "max": 117.92,
-          "current": 79.49,
-          "pct": 0.383
+          "current": 83.6,
+          "pct": 0.67
         }
       ],
       "10Y": [
@@ -1101,10 +1101,10 @@
             "pct": "Excel"
           },
           "min": 79.7,
-          "median": 93.395,
-          "max": 124.93,
-          "current": 119.82,
-          "pct": 0.986
+          "median": 90.77,
+          "max": 124.77,
+          "current": 123.72,
+          "pct": 0.991
         },
         {
           "sector": "Utility",
@@ -1116,10 +1116,10 @@
             "pct": "Excel"
           },
           "min": 81.23,
-          "median": 92.86,
+          "median": 91.71,
           "max": 126.32,
-          "current": 97.1,
-          "pct": 0.627
+          "current": 100.69,
+          "pct": 0.831
         },
         {
           "sector": "F&B",
@@ -1131,10 +1131,10 @@
             "pct": "Excel"
           },
           "min": 71.51,
-          "median": 84.52000000000001,
+          "median": 83.04,
           "max": 116.17,
-          "current": 87.02,
-          "pct": 0.605
+          "current": 91.07,
+          "pct": 0.869
         },
         {
           "sector": "Tobacco",
@@ -1146,10 +1146,10 @@
             "pct": "Excel"
           },
           "min": 75.83,
-          "median": 94.3,
-          "max": 137.23,
-          "current": 95.68,
-          "pct": 0.565
+          "median": 91.33,
+          "max": 131.89,
+          "current": 101.01,
+          "pct": 0.879
         },
         {
           "sector": "Healthcare",
@@ -1161,10 +1161,10 @@
             "pct": "Excel"
           },
           "min": 66.46,
-          "median": 79.565,
-          "max": 108.66,
-          "current": 77.78,
-          "pct": 0.425
+          "median": 76.81,
+          "max": 106.14,
+          "current": 82.37,
+          "pct": 0.765
         },
         {
           "sector": "Retail",
@@ -1176,10 +1176,10 @@
             "pct": "Excel"
           },
           "min": 63.62,
-          "median": 75.33500000000001,
+          "median": 73.03,
           "max": 114.9,
-          "current": 76.69,
-          "pct": 0.544
+          "current": 82.01,
+          "pct": 0.845
         },
         {
           "sector": "Transportation",
@@ -1191,10 +1191,10 @@
             "pct": "Excel"
           },
           "min": 69.08,
-          "median": 81.545,
-          "max": 118.89,
-          "current": 89.53,
-          "pct": 0.697
+          "median": 79.53,
+          "max": 118.7,
+          "current": 93.57,
+          "pct": 0.881
         }
       ],
       "30Y": [
@@ -1208,10 +1208,10 @@
             "pct": "Excel"
           },
           "min": 90.84,
-          "median": 109.655,
+          "median": 107.78,
           "max": 148.12,
-          "current": 141.04,
-          "pct": 0.984
+          "current": 145.06,
+          "pct": 0.991
         },
         {
           "sector": "Utility",
@@ -1223,10 +1223,10 @@
             "pct": "Excel"
           },
           "min": 86.58,
-          "median": 98.995,
-          "max": 133.05,
-          "current": 97.53,
-          "pct": 0.451
+          "median": 95.29,
+          "max": 132.27,
+          "current": 100.36,
+          "pct": 0.706
         },
         {
           "sector": "F&B",
@@ -1238,10 +1238,10 @@
             "pct": "Excel"
           },
           "min": 78.92,
-          "median": 90.275,
+          "median": 89.05,
           "max": 117.96,
-          "current": 92.28,
-          "pct": 0.607
+          "current": 95.88,
+          "pct": 0.857
         },
         {
           "sector": "Tobacco",
@@ -1253,10 +1253,10 @@
             "pct": "Excel"
           },
           "min": 100.83,
-          "median": 119.695,
-          "max": 171.9,
-          "current": 112,
-          "pct": 0.377
+          "median": 112,
+          "max": 164.18,
+          "current": 117.89,
+          "pct": 0.63
         },
         {
           "sector": "Healthcare",
@@ -1268,10 +1268,10 @@
             "pct": "Excel"
           },
           "min": 77.82,
-          "median": 95.625,
+          "median": 89.92,
           "max": 124,
-          "current": 87.95,
-          "pct": 0.289
+          "current": 92.49,
+          "pct": 0.558
         },
         {
           "sector": "Retail",
@@ -1283,10 +1283,10 @@
             "pct": "Excel"
           },
           "min": 72.63,
-          "median": 85.86500000000001,
+          "median": 83.04,
           "max": 119.76,
-          "current": 87.22,
-          "pct": 0.567
+          "current": 91.76,
+          "pct": 0.845
         },
         {
           "sector": "Transportation",
@@ -1298,10 +1298,10 @@
             "pct": "Excel"
           },
           "min": 69.75,
-          "median": 86.33500000000001,
+          "median": 80.98,
           "max": 118.55,
-          "current": 78.94,
-          "pct": 0.287
+          "current": 83.48,
+          "pct": 0.558
         }
       ],
       "10s30s": [
@@ -1314,11 +1314,11 @@
             "current": "Excel",
             "pct": "Excel"
           },
-          "min": 5.51,
-          "median": 16.585,
+          "min": 5.88,
+          "median": 17.54,
           "max": 24.98,
-          "current": 21.23,
-          "pct": 0.914
+          "current": 21.34,
+          "pct": 0.879
         },
         {
           "sector": "Utility",
@@ -1330,10 +1330,10 @@
             "pct": "Excel"
           },
           "min": -3.18,
-          "median": 5.640000000000001,
-          "max": 13.24,
-          "current": 0.43,
-          "pct": 0.034
+          "median": 4.57,
+          "max": 12.68,
+          "current": -0.33,
+          "pct": 0.02
         },
         {
           "sector": "F&B",
@@ -1345,10 +1345,10 @@
             "pct": "Excel"
           },
           "min": -0.37,
-          "median": 5.9,
+          "median": 6.01,
           "max": 13.31,
-          "current": 5.26,
-          "pct": 0.355
+          "current": 4.8,
+          "pct": 0.273
         },
         {
           "sector": "Tobacco",
@@ -1360,10 +1360,10 @@
             "pct": "Excel"
           },
           "min": 11.55,
-          "median": 27.06,
-          "max": 38.93,
-          "current": 16.32,
-          "pct": 0.077
+          "median": 24.76,
+          "max": 37.27,
+          "current": 16.88,
+          "pct": 0.138
         },
         {
           "sector": "Healthcare",
@@ -1374,11 +1374,11 @@
             "current": "Excel",
             "pct": "Excel"
           },
-          "min": 8.28,
-          "median": 14.434999999999999,
+          "min": 8.42,
+          "median": 14.6,
           "max": 20.75,
-          "current": 10.17,
-          "pct": 0.044
+          "current": 10.12,
+          "pct": 0.052
         },
         {
           "sector": "Retail",
@@ -1389,11 +1389,11 @@
             "current": "Excel",
             "pct": "Excel"
           },
-          "min": -3.48,
-          "median": 8.85,
+          "min": -0.78,
+          "median": 9.95,
           "max": 17.26,
-          "current": 10.53,
-          "pct": 0.686
+          "current": 9.75,
+          "pct": 0.469
         },
         {
           "sector": "Transportation",
@@ -1405,10 +1405,10 @@
             "pct": "Excel"
           },
           "min": -11.62,
-          "median": 1.545,
+          "median": 1.87,
           "max": 9.99,
-          "current": -10.58,
-          "pct": 0.004
+          "current": -10.09,
+          "pct": 0.014
         }
       ]
     }
